@@ -1,0 +1,32 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: macos-10.15
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Release
+      run: cargo build --verbose --release
+    - name: Produce bundle
+      run: ./osx_vst_bundler.sh
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v2.2.1
+      with:
+        name: Mac OSX VST Bundle
+        path: artefact
+        if-no-files-found: error
