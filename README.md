@@ -2,7 +2,7 @@
 
 This VST plugin was made possible thanks to https://github.com/RustAudio/vst-rs
 
-Just select the channel, pitch and velocity and move the trigger above 50%, and a note will be generated.
+Just select the channel, pitch and velocity and move the trigger above 50%, and a note will be generated. Additionally, you can also generate channel pressure messages which may come handy since bitwig has no device for this either.
 
 If you can modulate those parameters like here in bitwig with a beat LFO, you can easily generate notes.
 
