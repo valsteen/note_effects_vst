@@ -49,7 +49,7 @@ struct NoteGeneratorPluginParameters {
 impl PluginParameters for NoteGeneratorPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index {
-            0 => format!("{}", self.channel.get()),
+            0 => format!("{}", self.channel.get() + 1),
             1 => format!("{}{}", NOTE_NAMES[self.pitch.get() as usize % 12], ((self.pitch.get() as i8) - C0) / 12),
             2 => format!("{}", self.velocity.get()),
             3 => format!("{}", self.note_off_velocity.get()),
