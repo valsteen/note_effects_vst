@@ -15,7 +15,9 @@ Find here a screen recording to get a better idea:
 <a href="https://www.youtube.com/watch?v=RkMzIqAKo4I"><img src="https://lh3.googleusercontent.com/pw/ACtC-3edwpMgzjFLWGPo-haiGYtn9Mk4hSDCrOYxb_7Y139Sc6A2ZCvIvzLenzIItKFh1eK1I1KzbYeaRGlGXzym9QNFDGryM80rnzI_8O7KyT_ttwuex_3_oYqgdH85xn5lsP5EU2NnRPQPyMI46-aNzY0y2A=w901-h574-no?authuser=0)](https://www.youtube.com/watch?v=RkMzIqAKo4I" data-canonical-src="https://gyazo.com/eb5c5741b6a9a16c692170a41a49c858.png" width="400"  /></a>
 
 
-I'll be working on making this plugin easily available to non-developers, in the meantime check https://github.com/RustAudio/vst-rs on how to build VST plugins.
+check https://github.com/valsteen/note_generator_vst/releases/ to download the bundle for Mac OS X. Beware that the bundle is not signed and Mac OS X may tell that it comes from an unrecognized developer, in which case you need authorize it via `Security & privacy` in System preferences.
+
+To build it yourself check https://github.com/RustAudio/vst-rs on how to build VST plugins.
 
 After installing Rust this boils down to:
 
