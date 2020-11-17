@@ -1,7 +1,9 @@
-#[macro_use] extern crate vst;
-#[macro_use] extern crate primitive_enum;
+#[macro_use]
+extern crate vst;
+#[macro_use]
+extern crate primitive_enum;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
@@ -12,7 +14,7 @@ use vst::util::ParameterTransfer;
 
 pub mod util;
 
-use crate::util::parameters::{f32_to_byte, byte_to_f32, f32_to_bool};
+use crate::util::parameters::{f32_to_byte, byte_to_f32, bool_to_f32, f32_to_bool};
 
 
 plugin_main!(NoteGeneratorPlugin);
@@ -30,19 +32,28 @@ primitive_enum! { Parameter i32 ;
 
 
 const PRESSURE: u8 = 0xD0;
+const PITCHWHEEL: u8 = 0xE0;
+const ZEROVALUE : u8 = 0x40;
+const CC: u8 = 0xB0;
+const TIMBRECC: u8 = 0x4A;
 const NOTE_OFF: u8 = 0x80;
 const NOTE_ON: u8 = 0x90;
 const C0: i8 = 0x18;
 static NOTE_NAMES: &[&str; 12] = &["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 
+#[derive(Default)]
+struct HostCallbackLock {
+    host: HostCallback
+}
+
 struct NoteGeneratorPluginParameters {
-    host: HostCallback,
+    host: Mutex<HostCallbackLock>,
     transfer: ParameterTransfer,
 }
 
 #[derive(Default)]
-struct NoteGeneratorPlugin {
+pub struct NoteGeneratorPlugin {
     events: Vec<MidiEvent>,
     send_buffer: SendEventBuffer,
     parameters: Arc<NoteGeneratorPluginParameters>,
@@ -66,9 +77,14 @@ impl NoteGeneratorPluginParameters {
     }
 
     #[inline]
+    fn set_bool_parameter(&self, index: Parameter, value: bool) {
+        self.transfer.set_parameter(index as usize, bool_to_f32(value))
+    }
+
+    #[inline]
     fn get_displayable_channel(&self) -> u8 {
         // NOT the stored value, but the one used to show on the UI
-        self.get_byte_parameter(Parameter::Channel) + 1
+        self.get_byte_parameter(Parameter::Channel) / 8 + 1
     }
 
     fn get_pitch_label(&self) -> String {
@@ -141,17 +157,38 @@ impl PluginParameters for NoteGeneratorPluginParameters {
             .to_string()
     }
 
-    #[inline]
     fn get_parameter(&self, index: i32) -> f32 {
         self.transfer.get_parameter(index as usize)
     }
 
-    #[inline]
     fn set_parameter(&self, index: i32, value: f32) {
-        self.transfer.set_parameter(index as usize, value);
+        if let Some(parameter) = Parameter::from(index) {
+            match parameter {
+                Parameter::Trigger => {
+                    // boolean case: in order to ignore intermediary changes,
+                    // don't just pass the unchanged f32
+                    let new_value = f32_to_bool(value);
+                    let old_value = self.get_bool_parameter(parameter);
+
+                    if new_value != old_value {
+                        self.set_bool_parameter(parameter, new_value)
+                    }
+                }
+                _ => {
+                    // reduce to a byte and compare, so modulators don't generate tons of
+                    // irrelevant changes
+                    let new_value = f32_to_byte(value);
+                    let old_value = self.get_byte_parameter(parameter);
+                    if new_value != old_value {
+                        self.set_byte_parameter(parameter, new_value)
+                    }
+                }
+            }
+        }
     }
 
     fn string_to_parameter(&self, index: i32, text: String) -> bool {
+        // TODO actually never called ? is it a cap ?
         match Parameter::from(index) {
             Some(parameter) => match parameter {
                 Parameter::Channel => match text.parse::<u8>() {
@@ -246,9 +283,9 @@ impl NoteGeneratorPlugin {
             self.parameters.get_parameter_by_name(Parameter::Channel));
         self.parameters.set_parameter_by_name(
             Parameter::TriggeredPitch,
-            self.parameters.get_parameter_by_name(Parameter::TriggeredPitch));
+            self.parameters.get_parameter_by_name(Parameter::Pitch));
         NoteGeneratorPlugin::make_midi_event([
-            NOTE_ON + self.parameters.get_byte_parameter(Parameter::Channel),
+            NOTE_ON + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
             self.parameters.get_byte_parameter(Parameter::Pitch),
             self.parameters.get_byte_parameter(Parameter::Velocity)
         ])
@@ -256,7 +293,7 @@ impl NoteGeneratorPlugin {
 
     fn get_current_note_off(&self) -> MidiEvent {
         NoteGeneratorPlugin::make_midi_event([
-            NOTE_OFF + self.parameters.get_byte_parameter(Parameter::TriggeredChannel),
+            NOTE_OFF + self.parameters.get_byte_parameter(Parameter::TriggeredChannel) / 8,
             self.parameters.get_byte_parameter(Parameter::TriggeredPitch),
             self.parameters.get_byte_parameter(Parameter::NoteOffVelocity)
         ])
@@ -264,8 +301,21 @@ impl NoteGeneratorPlugin {
 
     fn get_current_pressure(&self) -> MidiEvent {
         NoteGeneratorPlugin::make_midi_event(
-            [PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel),
+            [PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 self.parameters.get_byte_parameter(Parameter::Pressure), 0]
+        )
+    }
+
+    fn get_current_timber(&self) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event([
+            CC + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+            TIMBRECC, ZEROVALUE])
+    }
+
+    fn get_current_pitchwheel(&self) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event([
+            PITCHWHEEL + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+            0, ZEROVALUE]
         )
     }
 
@@ -275,20 +325,29 @@ impl NoteGeneratorPlugin {
                 Some(parameter) => match parameter {
                     Parameter::Pressure => {
                         self.events.push(self.get_current_pressure());
-                    },
+                    }
+
                     Parameter::Trigger => {
-                        if value > 0.0 {
+                        if f32_to_bool(value) {
+                            // more work would be needed to implement MPE but this does the trick
+                            // as multichannel
                             self.events.push(self.get_current_note_on());
+                            self.events.push(self.get_current_pitchwheel());
+                            self.events.push(self.get_current_timber());
+                            self.events.push(self.get_current_pressure());
                         } else {
                             self.events.push(self.get_current_note_off());
                         }
-                    },
+                    }
                     _ => ()
                 },
                 _ => {}
             }
         }
-        self.send_buffer.send_events(&self.events, &mut Arc::get_mut(&mut self.parameters).unwrap().host);
+
+        if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
+            self.send_buffer.send_events(&self.events, &mut host_callback_lock.host);
+        }
         self.events.clear();
     }
 }
@@ -319,7 +378,7 @@ impl Plugin for NoteGeneratorPlugin {
             events: Default::default(),
             send_buffer: Default::default(),
             parameters: Arc::new(NoteGeneratorPluginParameters {
-                host,
+                host: Mutex::new(HostCallbackLock { host }),
                 ..Default::default()
             }),
         }

@@ -1,6 +1,6 @@
 [package]
 name = "note_generator"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Vincent Alsteen <vincent.alsteen@gmail.com>"]
 edition = "2018"
 
@@ -12,4 +12,4 @@ primitive_enum = "1.0.2"
 
 [lib]
 name = "note_generator"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
