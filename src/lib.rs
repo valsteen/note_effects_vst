@@ -250,6 +250,26 @@ impl PluginParameters for NoteGeneratorPluginParameters {
             _ => false
         }
     }
+
+    fn load_preset_data(&self, data: &[u8]) {
+        for (i, item) in data.iter().enumerate() {
+            self.set_byte_parameter(Parameter::from(i as i32).unwrap(), *item);
+        }
+    }
+
+    fn load_bank_data(&self, data: &[u8]) {
+        for (i, item) in data.iter().enumerate() {
+            self.set_byte_parameter(Parameter::from(i as i32).unwrap(), *item);
+        }
+    }
+
+    fn get_preset_data(&self) -> Vec<u8> {
+        (0..8).map(|i| self.get_byte_parameter(Parameter::from(i as i32).unwrap())).collect()
+    }
+
+    fn get_bank_data(&self) -> Vec<u8> {
+        (0..8).map(|i| self.get_byte_parameter(Parameter::from(i as i32).unwrap())).collect()
+    }
 }
 
 impl Default for NoteGeneratorPluginParameters {
@@ -366,9 +386,9 @@ impl Plugin for NoteGeneratorPlugin {
             outputs: 0,
             midi_inputs: 0,
             f64_precision: false,
-            presets: 0,
+            presets: 1,
             midi_outputs: 0,
-            preset_chunks: false,
+            preset_chunks: true,
             silent_when_stopped: true,
         }
     }
