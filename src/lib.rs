@@ -1,19 +1,32 @@
-#[macro_use]
-extern crate vst;
+#[macro_use] extern crate vst;
+#[macro_use] extern crate primitive_enum;
+
+use std::sync::Arc;
 
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, HostCallback, Info, Plugin, Category, PluginParameters};
-use std::sync::Arc;
+use vst::util::ParameterTransfer;
+
 
 pub mod util;
 
-pub use util::parameters::FloatParameter;
-use crate::util::parameters::{BoolParameter, ByteParameter};
+use crate::util::parameters::{f32_to_byte, byte_to_f32, f32_to_bool};
 
 
 plugin_main!(NoteGeneratorPlugin);
+
+primitive_enum! { Parameter i32 ;
+    Channel,
+    Pitch,
+    Velocity,
+    NoteOffVelocity,
+    Pressure,
+    Trigger,
+    TriggeredPitch,
+    TriggeredChannel,
+}
 
 
 const PRESSURE: u8 = 0xD0;
@@ -23,91 +36,194 @@ const C0: i8 = 0x18;
 static NOTE_NAMES: &[&str; 12] = &["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 
+struct NoteGeneratorPluginParameters {
+    host: HostCallback,
+    transfer: ParameterTransfer,
+}
+
 #[derive(Default)]
 struct NoteGeneratorPlugin {
-    host: HostCallback,
     events: Vec<MidiEvent>,
     send_buffer: SendEventBuffer,
     parameters: Arc<NoteGeneratorPluginParameters>,
 }
 
 
-struct NoteGeneratorPluginParameters {
-    channel: ByteParameter,
-    pitch: ByteParameter,
-    velocity: ByteParameter,
-    note_off_velocity: ByteParameter,
-    pressure: ByteParameter,
-    trigger: BoolParameter,
-    pressure_is_modified: BoolParameter,
-    trigger_is_modified: BoolParameter,
-    triggered_note_channel: ByteParameter,
-    triggered_note_pitch: ByteParameter,
+impl NoteGeneratorPluginParameters {
+    #[inline]
+    fn set_byte_parameter(&self, index: Parameter, value: u8) {
+        self.transfer.set_parameter(index as usize, byte_to_f32(value))
+    }
+
+    #[inline]
+    fn get_byte_parameter(&self, index: Parameter) -> u8 {
+        f32_to_byte(self.transfer.get_parameter(index as usize))
+    }
+
+    #[inline]
+    fn get_bool_parameter(&self, index: Parameter) -> bool {
+        f32_to_bool(self.transfer.get_parameter(index as usize))
+    }
+
+    #[inline]
+    fn get_displayable_channel(&self) -> u8 {
+        // NOT the stored value, but the one used to show on the UI
+        self.get_byte_parameter(Parameter::Channel) + 1
+    }
+
+    fn get_pitch_label(&self) -> String {
+        format!("{}{}",
+                NOTE_NAMES[self.get_byte_parameter(Parameter::Pitch) as usize % 12],
+                ((self.get_byte_parameter(Parameter::Pitch) as i8) - C0) / 12)
+    }
+
+    #[inline]
+    fn get_velocity(&self) -> u8 {
+        self.get_byte_parameter(Parameter::Velocity)
+    }
+
+    #[inline]
+    fn get_note_off_velocity(&self) -> u8 {
+        self.get_byte_parameter(Parameter::NoteOffVelocity)
+    }
+
+    #[inline]
+    fn get_pressure(&self) -> u8 {
+        self.get_byte_parameter(Parameter::Pressure)
+    }
+
+    #[inline]
+    fn get_trigger(&self) -> bool {
+        self.get_bool_parameter(Parameter::Trigger)
+    }
+
+    #[inline]
+    fn set_parameter_by_name(&self, index: Parameter, value: f32) {
+        self.set_parameter(index as i32, value);
+    }
+
+    #[inline]
+    fn get_parameter_by_name(&self, index: Parameter) -> f32 {
+        self.get_parameter(index as i32)
+    }
 }
 
 
 impl PluginParameters for NoteGeneratorPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
-        match index {
-            0 => format!("{}", self.channel.get() + 1),
-            1 => format!("{}{}", NOTE_NAMES[self.pitch.get() as usize % 12], ((self.pitch.get() as i8) - C0) / 12),
-            2 => format!("{}", self.velocity.get()),
-            3 => format!("{}", self.note_off_velocity.get()),
-            4 => format!("{}", self.pressure.get()),
-            5 => format!("{}", self.trigger.get()),
+        match Parameter::from(index) {
+            Some(parameter) => match parameter {
+                Parameter::Channel => format!("{}", self.get_displayable_channel()),
+                Parameter::Pitch => self.get_pitch_label(),
+                Parameter::Velocity => format!("{}", self.get_velocity()),
+                Parameter::NoteOffVelocity => format!("{}", self.get_note_off_velocity()),
+                Parameter::Pressure => format!("{}", self.get_pressure()),
+                Parameter::Trigger => format!("{}", self.get_trigger()),
+                _ => "".to_string()
+            },
             _ => "".to_string(),
         }
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
-        match index {
-            0 => "Channel",
-            1 => "Pitch",
-            2 => "Velocity",
-            3 => "Note off velocity",
-            4 => "Pressure",
-            5 => "Trigger generated note",
-            _ => "",
+        match Parameter::from(index) {
+            Some(parameter) => match parameter {
+                Parameter::Channel => "Channel",
+                Parameter::Pitch => "Pitch",
+                Parameter::Velocity => "Velocity",
+                Parameter::NoteOffVelocity => "Note off velocity",
+                Parameter::Pressure => "Pressure",
+                Parameter::Trigger => "Trigger generated note",
+                _ => "",
+            },
+            _ => ""
         }
             .to_string()
     }
 
-    fn set_parameter(&self, index: i32, val: f32) {
-        match index {
-            0 => self.channel.set_from_f32(val / 8.),
-            1 => self.pitch.set_from_f32(val),
-            2 => self.velocity.set_from_f32(val),
-            3 => self.note_off_velocity.set_from_f32(val),
-            4 => {
-                self.pressure.set_from_f32(val);
-                self.pressure_is_modified.set(true)
-            }
-            5 => {
-                let old_value = self.trigger.get();
-                if old_value != (val > 0.5) {
-                    self.trigger.set_from_f32(val);
-                    self.trigger_is_modified.set(true)
+    #[inline]
+    fn get_parameter(&self, index: i32) -> f32 {
+        self.transfer.get_parameter(index as usize)
+    }
+
+    #[inline]
+    fn set_parameter(&self, index: i32, value: f32) {
+        self.transfer.set_parameter(index as usize, value);
+    }
+
+    fn string_to_parameter(&self, index: i32, text: String) -> bool {
+        match Parameter::from(index) {
+            Some(parameter) => match parameter {
+                Parameter::Channel => match text.parse::<u8>() {
+                    Ok(n) => {
+                        if n > 0 && n <= 16 {
+                            self.set_byte_parameter(Parameter::Channel, n);
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    Err(_) => false
+                },
+                Parameter::Velocity | Parameter::NoteOffVelocity | Parameter::Pressure => {
+                    match text.parse::<u8>() {
+                        Ok(n) => {
+                            if n < 128 {
+                                self.set_byte_parameter(parameter, n);
+                                true
+                            } else { false }
+                        }
+                        Err(_) => false
+                    }
                 }
-            }
-            _ => (),
+                Parameter::Pitch => {
+                    match NOTE_NAMES.iter().position(|&s| text.starts_with(s)) {
+                        None => false,
+                        Some(position) => {
+                            match text[NOTE_NAMES[position].len()..text.len()].parse::<i8>() {
+                                Ok(octave) => {
+                                    if octave >= -2 && octave <= 8 {
+                                        let pitch = octave as i16 * 12 + C0 as i16 + position as i16;
+                                        if pitch < 128 {
+                                            self.set_byte_parameter(Parameter::Pitch, pitch as u8);
+                                            true
+                                        } else { false }
+                                    } else { false }
+                                }
+                                Err(_) => false
+                            }
+                        }
+                    }
+                }
+                Parameter::Trigger => {
+                    match text.to_ascii_lowercase().as_ref() {
+                        "0" | "off" | "" => {
+                            self.set_byte_parameter(Parameter::Trigger, 0);
+                            true
+                        }
+                        "1" | "on" => {
+                            self.set_byte_parameter(Parameter::Trigger, 1);
+                            true
+                        }
+                        _ => false
+                    }
+                }
+                _ => false
+            },
+            _ => false
         }
     }
 }
 
 impl Default for NoteGeneratorPluginParameters {
     fn default() -> Self {
-        NoteGeneratorPluginParameters {
-            channel: ByteParameter::new(0),
-            pitch: Default::default(),
-            velocity: Default::default(),
-            note_off_velocity: Default::default(),
-            pressure: ByteParameter::new(0),
-            trigger: Default::default(),
-            pressure_is_modified: Default::default(),
-            trigger_is_modified: Default::default(),
-            triggered_note_channel: Default::default(),
-            triggered_note_pitch: Default::default(),
-        }
+        let parameters = NoteGeneratorPluginParameters {
+            host: Default::default(),
+            transfer: ParameterTransfer::new(8),
+        };
+        parameters.set_byte_parameter(Parameter::Pitch, C0 as u8);
+        parameters.set_byte_parameter(Parameter::Velocity, 64);
+        parameters
     }
 }
 
@@ -124,36 +240,55 @@ impl NoteGeneratorPlugin {
         }
     }
 
-    fn push_midi_event(&mut self, bytes: [u8; 3]) {
-        self.events.push(NoteGeneratorPlugin::make_midi_event(bytes))
+    fn get_current_note_on(&self) -> MidiEvent {
+        self.parameters.set_parameter_by_name(
+            Parameter::TriggeredChannel,
+            self.parameters.get_parameter_by_name(Parameter::Channel));
+        self.parameters.set_parameter_by_name(
+            Parameter::TriggeredPitch,
+            self.parameters.get_parameter_by_name(Parameter::TriggeredPitch));
+        NoteGeneratorPlugin::make_midi_event([
+            NOTE_ON + self.parameters.get_byte_parameter(Parameter::Channel),
+            self.parameters.get_byte_parameter(Parameter::Pitch),
+            self.parameters.get_byte_parameter(Parameter::Velocity)
+        ])
+    }
+
+    fn get_current_note_off(&self) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event([
+            NOTE_OFF + self.parameters.get_byte_parameter(Parameter::TriggeredChannel),
+            self.parameters.get_byte_parameter(Parameter::TriggeredPitch),
+            self.parameters.get_byte_parameter(Parameter::NoteOffVelocity)
+        ])
+    }
+
+    fn get_current_pressure(&self) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event(
+            [PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel),
+                self.parameters.get_byte_parameter(Parameter::Pressure), 0]
+        )
     }
 
     fn send_midi(&mut self) {
-        if self.parameters.pressure_is_modified.get() {
-            self.parameters.pressure_is_modified.set(false);
-            self.push_midi_event(
-                [PRESSURE + self.parameters.channel.get(), self.parameters.pressure.get(), 0]
-            );
-        }
-        if self.parameters.trigger_is_modified.get() {
-            if self.parameters.trigger.get() {
-                self.parameters.triggered_note_channel.set(self.parameters.channel.get());
-                self.parameters.triggered_note_pitch.set(self.parameters.pitch.get());
-                self.push_midi_event([
-                    NOTE_ON + self.parameters.triggered_note_channel.get(),
-                    self.parameters.triggered_note_pitch.get(),
-                    self.parameters.velocity.get()
-                ]);
-            } else {
-                self.push_midi_event([
-                    NOTE_OFF + self.parameters.channel.get(),
-                    self.parameters.pitch.get(),
-                    self.parameters.note_off_velocity.get()
-                ]);
+        for (index, value) in self.parameters.transfer.iterate(true) {
+            match Parameter::from(index as i32) {
+                Some(parameter) => match parameter {
+                    Parameter::Pressure => {
+                        self.events.push(self.get_current_pressure());
+                    },
+                    Parameter::Trigger => {
+                        if value > 0.0 {
+                            self.events.push(self.get_current_note_on());
+                        } else {
+                            self.events.push(self.get_current_note_off());
+                        }
+                    },
+                    _ => ()
+                },
+                _ => {}
             }
-            self.parameters.trigger_is_modified.set(false);
         }
-        self.send_buffer.send_events(&self.events, &mut self.host);
+        self.send_buffer.send_events(&self.events, &mut Arc::get_mut(&mut self.parameters).unwrap().host);
         self.events.clear();
     }
 }
@@ -166,15 +301,28 @@ impl Plugin for NoteGeneratorPlugin {
             unique_id: 234213172,
             parameters: 6,
             category: Category::Generator,
+            initial_delay: 0,
             version: 7,
-            ..Default::default()
+            inputs: 0,
+            outputs: 0,
+            midi_inputs: 0,
+            f64_precision: false,
+            presets: 0,
+            midi_outputs: 0,
+            preset_chunks: false,
+            silent_when_stopped: true,
         }
     }
 
     fn new(host: HostCallback) -> Self {
-        let mut p = NoteGeneratorPlugin::default();
-        p.host = host;
-        p
+        NoteGeneratorPlugin {
+            events: Default::default(),
+            send_buffer: Default::default(),
+            parameters: Arc::new(NoteGeneratorPluginParameters {
+                host,
+                ..Default::default()
+            }),
+        }
     }
 
     fn can_do(&self, can_do: CanDo) -> vst::api::Supported {
@@ -187,21 +335,7 @@ impl Plugin for NoteGeneratorPlugin {
         }
     }
 
-    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        for (input, output) in buffer.zip() {
-            for (in_sample, out_sample) in input.iter().zip(output) {
-                *out_sample = *in_sample;
-            }
-        }
-        self.send_midi();
-    }
-
-    fn process_f64(&mut self, buffer: &mut AudioBuffer<f64>) {
-        for (input, output) in buffer.zip() {
-            for (in_sample, out_sample) in input.iter().zip(output) {
-                *out_sample = *in_sample;
-            }
-        }
+    fn process(&mut self, _: &mut AudioBuffer<f32>) {
         self.send_midi();
     }
 
