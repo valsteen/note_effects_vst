@@ -55,6 +55,10 @@ struct NoteGeneratorPluginParameters {
 #[derive(Default)]
 pub struct NoteGeneratorPlugin {
     events: Vec<MidiEvent>,
+    // next_events are sent at next process call, in order to adjust expressive attributes
+    // ( pitch wheel, pressure, timber ) after the note on event. otherwise bitwig may ignore
+    // those events and override them if they happen from the same process() call.
+    next_events: Vec<MidiEvent>,
     send_buffer: SendEventBuffer,
     parameters: Arc<NoteGeneratorPluginParameters>,
 }
@@ -349,12 +353,23 @@ impl NoteGeneratorPlugin {
 
                     Parameter::Trigger => {
                         if f32_to_bool(value) {
-                            // more work would be needed to implement MPE but this does the trick
-                            // as multichannel
+                            /*
+                            At note on, don't send pressure/timber/pitch wheel yet, just the
+                            Note On ; upon receiving the Note On bitwig will send those
+                            messages with zero values right before the Note On message anyway
+                             */
                             self.events.push(self.get_current_note_on());
-                            self.events.push(self.get_current_pitchwheel());
-                            self.events.push(self.get_current_timber());
-                            self.events.push(self.get_current_pressure());
+
+                            /*
+                            Sending those events at the next process() call makes sure they are
+                            actually sent to the instrument in order to apply note expression.
+
+                            Delaying those events is the behaviour of a ROLI seaboard talking
+                            to Bitwig.
+                             */
+                            self.next_events.push(self.get_current_pitchwheel());
+                            self.next_events.push(self.get_current_timber());
+                            self.next_events.push(self.get_current_pressure());
                         } else {
                             self.events.push(self.get_current_note_off());
                         }
@@ -369,6 +384,13 @@ impl NoteGeneratorPlugin {
             self.send_buffer.send_events(&self.events, &mut host_callback_lock.host);
         }
         self.events.clear();
+
+        // plan those events for the next process() call. This is in order to make sure note
+        // expressions are taken into account, if sending in the same call as Note On it seems
+        // bitwig cancels them out with its own Note On messages
+        for next_event in self.next_events.drain(..) {
+            self.events.push(next_event)
+        }
     }
 }
 
@@ -395,12 +417,11 @@ impl Plugin for NoteGeneratorPlugin {
 
     fn new(host: HostCallback) -> Self {
         NoteGeneratorPlugin {
-            events: Default::default(),
-            send_buffer: Default::default(),
             parameters: Arc::new(NoteGeneratorPluginParameters {
                 host: Mutex::new(HostCallbackLock { host }),
                 ..Default::default()
             }),
+            ..Default::default()
         }
     }
 
