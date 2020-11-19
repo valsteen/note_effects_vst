@@ -45,10 +45,10 @@ pub struct NoteGeneratorPlugin {
 }
 
 impl NoteGeneratorPlugin {
-    fn make_midi_event(bytes: [u8; 3]) -> MidiEvent {
+    fn make_midi_event(bytes: [u8; 3], delta_frames: i32) -> MidiEvent {
         MidiEvent {
             data: bytes,
-            delta_frames: 0,
+            delta_frames,
             live: true,
             note_length: None,
             note_offset: None,
@@ -58,45 +58,49 @@ impl NoteGeneratorPlugin {
     }
 
     fn get_midi_channel_event(&self, event_type: u8, channel_parameter: Parameter,
-                              pitch_parameter: Parameter, velocity_parameter: Parameter) -> MidiEvent {
+                              pitch_parameter: Parameter, velocity_parameter: Parameter,
+                              delta: i32) -> MidiEvent {
         NoteGeneratorPlugin::make_midi_event([
-            event_type + self.parameters.get_byte_parameter(channel_parameter) / 8,
-            self.parameters.get_byte_parameter(pitch_parameter),
-            self.parameters.get_byte_parameter(velocity_parameter)
-        ])
+                                                 event_type + self.parameters.get_byte_parameter(channel_parameter) / 8,
+                                                 self.parameters.get_byte_parameter(pitch_parameter),
+                                                 self.parameters.get_byte_parameter(velocity_parameter)
+                                             ], delta)
     }
 
-    fn get_current_note_on(&self) -> MidiEvent {
+    fn get_current_note_on(&self, delta: i32) -> MidiEvent {
         self.get_midi_channel_event(NOTE_ON,
                                     Parameter::Channel,
                                     Parameter::Pitch,
-                                    Parameter::Velocity)
+                                    Parameter::Velocity, delta)
     }
 
-    fn get_current_note_off(&self) -> MidiEvent {
+    fn get_current_note_off(&self, delta: i32) -> MidiEvent {
         self.get_midi_channel_event(NOTE_OFF,
                                     Parameter::TriggeredChannel,
                                     Parameter::TriggeredPitch,
-                                    Parameter::NoteOffVelocity)
+                                    Parameter::NoteOffVelocity, delta)
     }
 
-    fn get_current_pressure(&self) -> MidiEvent {
+    fn get_current_pressure(&self, delta: i32) -> MidiEvent {
         NoteGeneratorPlugin::make_midi_event(
             [PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
-                self.parameters.get_byte_parameter(Parameter::Pressure), 0]
+                self.parameters.get_byte_parameter(Parameter::Pressure), 0],
+            delta,
         )
     }
 
-    fn get_current_timber(&self) -> MidiEvent {
-        NoteGeneratorPlugin::make_midi_event([
-            CC + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
-            TIMBRECC, ZEROVALUE])
+    fn get_current_timber(&self, delta: i32) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event(
+            [
+                CC + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+                TIMBRECC, ZEROVALUE], delta)
     }
 
-    fn get_current_pitchwheel(&self) -> MidiEvent {
-        NoteGeneratorPlugin::make_midi_event([
-            PITCHWHEEL + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
-            0, ZEROVALUE]
+    fn get_current_pitchwheel(&self, delta: i32) -> MidiEvent {
+        NoteGeneratorPlugin::make_midi_event(
+            [
+                PITCHWHEEL + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+                0, ZEROVALUE], delta,
         )
     }
 
@@ -105,33 +109,26 @@ impl NoteGeneratorPlugin {
             match Parameter::from(index as i32) {
                 Some(parameter) => match parameter {
                     Parameter::Pressure => {
-                        self.events.push(self.get_current_pressure());
+                        self.events.push(self.get_current_pressure(0));
                     }
 
                     Parameter::Trigger => {
                         if f32_to_bool(value) {
-                            /*
-                            At note on, don't send pressure/timber/pitch wheel yet, just the
-                            Note On ; upon receiving the Note On bitwig will send those
-                            messages with zero values right before the Note On message anyway
-                             */
                             self.parameters.copy_parameter(Parameter::Channel,
                                                            Parameter::TriggeredChannel);
                             self.parameters.copy_parameter(Parameter::Pitch,
                                                            Parameter::TriggeredPitch);
-                            self.events.push(self.get_current_note_on());
-                            /*
-                            Sending those events at the next process() call makes sure they are
-                            actually sent to the instrument in order to apply note expression.
+                            self.events.push(self.get_current_note_on(0));
 
-                            Delaying those events is the behaviour of a ROLI seaboard talking
-                            to Bitwig.
-                             */
-                            self.next_events.push(self.get_current_pitchwheel());
-                            self.next_events.push(self.get_current_timber());
-                            self.next_events.push(self.get_current_pressure());
+                            // delay those expressions with delta frames, seem to do the trick
+                            // even though bitwig always inserts zero values for those before the
+                            // note, so it always need to be sent right after to obtain the
+                            // desired state
+                            self.events.push(self.get_current_pitchwheel(1));
+                            self.events.push(self.get_current_timber(1));
+                            self.events.push(self.get_current_pressure(1));
                         } else {
-                            self.events.push(self.get_current_note_off());
+                            self.events.push(self.get_current_note_off(0));
                         }
                     }
                     _ => ()
@@ -144,13 +141,6 @@ impl NoteGeneratorPlugin {
             self.send_buffer.send_events(&self.events, &mut host_callback_lock.host);
         }
         self.events.clear();
-
-        // plan those events for the next process() call. This is in order to make sure note
-        // expressions are taken into account, if sending in the same call as Note On it seems
-        // bitwig cancels them out with its own Note On messages
-        for next_event in self.next_events.drain(..) {
-            self.events.push(next_event)
-        }
     }
 }
 
@@ -161,15 +151,15 @@ impl Plugin for NoteGeneratorPlugin {
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213172,
             parameters: 6,
-            category: Category::Generator,
+            category: Category::Effect,
             initial_delay: 0,
             version: 7,
             inputs: 0,
             outputs: 0,
-            midi_inputs: 0,
+            midi_inputs: 1,
             f64_precision: false,
             presets: 1,
-            midi_outputs: 0,
+            midi_outputs: 1,
             preset_chunks: true,
             silent_when_stopped: true,
         }
