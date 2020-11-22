@@ -39,7 +39,6 @@ pub struct NoteGeneratorPlugin {
     // next_events are sent at next process call, in order to adjust expressive attributes
     // ( pitch wheel, pressure, timber ) after the note on event. otherwise bitwig may ignore
     // those events and override them if they happen from the same process() call.
-    next_events: Vec<MidiEvent>,
     send_buffer: SendEventBuffer,
     parameters: Arc<parameters::NoteGeneratorPluginParameters>,
 }
