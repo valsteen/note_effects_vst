@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "util",
+    "note_generator",
+    "note_off_delay",
+]

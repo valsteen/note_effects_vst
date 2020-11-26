@@ -1,57 +1,62 @@
 #!/bin/bash
 
 ARTEFACT_DIRECTORY=artefact
-BUNDLE_NAME=NoteGenerator
-LIB_PATH=target/release/libnote_generator.dylib
+LIB_PATH_PREFIX=target/release/
 
-# Make the bundle folder
-mkdir -p "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/MacOS"
+for BUNDLE_LIB in "NoteGenerator note_generator" "NoteOffDelay note_off_delay" ; do
+  BUNDLE_NAME=$(echo $BUNDLE_LIB | cut -f1 -d" ")
+  LIBNAME=$(echo $BUNDLE_LIB | cut -f2 -d" ")
+  LIB_PATH=${LIB_PATH_PREFIX}lib${LIBNAME}.dylib
 
-# Create the PkgInfo
-echo "BNDL????" > "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/PkgInfo"
+  # Make the bundle folder
+  mkdir -p "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/MacOS"
 
-#build the Info.Plist
-echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
-<plist version=\"1.0\">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>English</string>
+  # Create the PkgInfo
+  echo "BNDL????" > "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/PkgInfo"
 
-    <key>CFBundleExecutable</key>
-    <string>${BUNDLE_NAME}</string>
+  #build the Info.Plist
+  echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+  <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+  <plist version=\"1.0\">
+  <dict>
+      <key>CFBundleDevelopmentRegion</key>
+      <string>English</string>
 
-    <key>CFBundleGetInfoString</key>
-    <string>vst</string>
+      <key>CFBundleExecutable</key>
+      <string>${BUNDLE_NAME}</string>
 
-    <key>CFBundleIconFile</key>
-    <string></string>
+      <key>CFBundleGetInfoString</key>
+      <string>vst</string>
 
-    <key>CFBundleIdentifier</key>
-    <string>com.rust-vst.${BUNDLE_NAME}</string>
+      <key>CFBundleIconFile</key>
+      <string></string>
 
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
+      <key>CFBundleIdentifier</key>
+      <string>com.rust-vst.${BUNDLE_NAME}</string>
 
-    <key>CFBundleName</key>
-    <string>${BUNDLE_NAME}</string>
+      <key>CFBundleInfoDictionaryVersion</key>
+      <string>6.0</string>
 
-    <key>CFBundlePackageType</key>
-    <string>BNDL</string>
+      <key>CFBundleName</key>
+      <string>${BUNDLE_NAME}</string>
 
-    <key>CFBundleVersion</key>
-    <string>1.$((RANDOM % 9999))</string>
+      <key>CFBundlePackageType</key>
+      <string>BNDL</string>
 
-    <key>CFBundleSignature</key>
-    <string>$((RANDOM % 9999))</string>
+      <key>CFBundleVersion</key>
+      <string>1.$((RANDOM % 9999))</string>
 
-    <key>CSResourcesFileMapped</key>
-    <string></string>
+      <key>CFBundleSignature</key>
+      <string>$((RANDOM % 9999))</string>
 
-</dict>
-</plist>" > "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/Info.plist"
+      <key>CSResourcesFileMapped</key>
+      <string></string>
 
-# move the provided library to the correct location
-cp "${LIB_PATH}" "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/MacOS/${BUNDLE_NAME}"
+  </dict>
+  </plist>" > "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/Info.plist"
 
-echo "Created bundle ${BUNDLE_NAME}.vst"
+  # move the provided library to the correct location
+  cp "${LIB_PATH}" "${ARTEFACT_DIRECTORY}/${BUNDLE_NAME}.vst/Contents/MacOS/${BUNDLE_NAME}"
+
+  echo "Created bundle ${BUNDLE_NAME}.vst"
+done
