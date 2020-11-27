@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 vst = { git = "https://github.com/rustaudio/vst-rs" }
-sorted-list = "0.2.0"
 util = { path = "../util" }
 build-info = "0.0.20"
 

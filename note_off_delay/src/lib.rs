@@ -11,24 +11,15 @@ use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 
 use parameters::NoteOffDelayPluginParameters;
-use sorted_list::SortedList;
 use util::constants::{NOTE_OFF, NOTE_ON};
 use vst::event::Event::Midi;
 
 plugin_main!(NoteOffDelayPlugin);
 
 #[derive(Clone)]
-struct SortableMidiEvent {
+struct DelayedMidiEvent {
     midi_event: MidiEvent,
     play_time_in_samples: usize,
-}
-
-impl PartialEq for SortableMidiEvent {
-    fn eq(&self, other: &Self) -> bool {
-        self.play_time_in_samples == other.play_time_in_samples
-            && self.midi_event.delta_frames == other.midi_event.delta_frames
-            && self.midi_event.data == other.midi_event.data
-    }
 }
 
 fn same_note(this: &MidiEvent, other: &MidiEvent) -> bool {
@@ -42,7 +33,7 @@ pub struct NoteOffDelayPlugin {
     parameters: Arc<NoteOffDelayPluginParameters>,
     sample_rate: f32,
     current_time_in_samples: usize,
-    delayed_events: SortedList<usize, SortableMidiEvent>,
+    delayed_events: Vec<DelayedMidiEvent>,
 }
 
 impl Default for NoteOffDelayPlugin {
@@ -53,7 +44,7 @@ impl Default for NoteOffDelayPlugin {
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            delayed_events: SortedList::new(),
+            delayed_events: Vec::new(),
         }
     }
 }
@@ -68,63 +59,22 @@ impl NoteOffDelayPlugin {
     }
 
     fn trigger_delayed_notes(&mut self, samples: usize) {
-        let iterable = &mut self.delayed_events.values();
-        let mut sortable_midi_event: &SortableMidiEvent;
-
-        // empty check
-        if let Some(next_sortable_midi_event) = iterable.next() {
-            sortable_midi_event = next_sortable_midi_event
-        } else {
-            // empty already
-            return;
-        }
-
-        // remove elements in the past
         loop {
-            if sortable_midi_event.play_time_in_samples >= self.current_time_in_samples {
-                // all in the future, but we removed elements in the past
-                break;
-            } else {
-                if let Some(next_sortable_midi_event) = iterable.next() {
-                    sortable_midi_event = next_sortable_midi_event
-                } else {
-                    // everything happened before, clear the list, return
-                    self.delayed_events = SortedList::new();
-                    return;
-                }
-            }
-        }
+            if self.delayed_events.is_empty() { break }
 
-        // play current elements
-        loop {
-            if sortable_midi_event.play_time_in_samples > self.current_time_in_samples + samples {
-                break;
+            if self.delayed_events[0].play_time_in_samples < self.current_time_in_samples {
+                self.delayed_events.remove(0);
+                continue
             }
 
-            let mut midi_event = sortable_midi_event.midi_event.clone();
-            midi_event.delta_frames =
-                (sortable_midi_event.play_time_in_samples - self.current_time_in_samples) as i32;
-            self.events.push(sortable_midi_event.midi_event.clone());
-
-            if let Some(next_sortable_midi_event) = iterable.next() {
-                sortable_midi_event = next_sortable_midi_event
-            } else {
-                break;
+            if self.delayed_events[0].play_time_in_samples >= self.current_time_in_samples + samples {
+                break
             }
-        }
 
-        let mut new_events = SortedList::new();
-        new_events.insert(
-            sortable_midi_event.play_time_in_samples,
-            (*sortable_midi_event).clone(),
-        );
-        for sortable_midi_event in iterable {
-            new_events.insert(
-                sortable_midi_event.play_time_in_samples,
-                (*sortable_midi_event).clone(),
-            );
+            let mut delayed_midi_event = self.delayed_events.remove(0);
+            delayed_midi_event.midi_event.delta_frames = (delayed_midi_event.play_time_in_samples - self.current_time_in_samples) as i32;
+            self.events.push(delayed_midi_event.midi_event);
         }
-        self.delayed_events = new_events;
     }
 
     #[allow(dead_code)]
@@ -169,28 +119,11 @@ impl NoteOffDelayPlugin {
     fn remove_duplicate_note(&mut self, midi_event: &MidiEvent) {
         // if a note off for the same pitch/channel already exists, remove it or it will interrupt the ongoing note. target instrument interrupts
         // a running note if another note on comes in anyway
-        // TODO ending up with that complexity just because SortedList does not implement removing items. Should just use an unsorted vec.
 
-        if self
-            .delayed_events
-            .values()
-            .find(|v| same_note(&v.midi_event, &midi_event))
-            .is_some()
-        {
-            self.parameters.debug(&*format!(
-                "found already : [{:#04X} {:#04X} {:#04X}]",
-                midi_event.data[0], midi_event.data[1], midi_event.data[2]
-            ));
-
-            let mut delayed_events: SortedList<usize, SortableMidiEvent> = SortedList::new();
-            for (delta, event) in self
-                .delayed_events
-                .iter()
-                .filter(|(_k, v)| !same_note(&v.midi_event, &midi_event))
-            {
-                delayed_events.insert(*delta, event.clone());
-            }
-            self.delayed_events = delayed_events;
+        if let Some(position) = self.delayed_events.iter().position(
+            |e| same_note(&e.midi_event, midi_event)
+        ) {
+            self.delayed_events.remove(position);
         }
     }
 
@@ -238,7 +171,7 @@ impl Plugin for NoteOffDelayPlugin {
             parameters: Arc::new(parameters),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            delayed_events: SortedList::new(),
+            delayed_events: Vec::new(),
         }
     }
 
@@ -289,19 +222,25 @@ impl Plugin for NoteOffDelayPlugin {
                     }
 
                     if e.data[0] >= NOTE_OFF && e.data[0] < NOTE_OFF + 0x10 {
-                        let delayed_event = SortableMidiEvent {
+                        let delayed_event = DelayedMidiEvent {
                             midi_event: e,
                             play_time_in_samples: {
                                 self.current_time_in_samples
                                     + self.seconds_to_samples(
-                                        self.parameters
-                                            .get_parameter(NoteOffDelayPluginParameters::DELAY),
-                                    )
+                                    self.parameters
+                                        .get_parameter(NoteOffDelayPluginParameters::DELAY),
+                                )
                                     + e.delta_frames as usize
                             },
                         };
-                        self.delayed_events
-                            .insert(delayed_event.play_time_in_samples, delayed_event);
+
+                        if let Some(insert_point) = self.delayed_events.iter().position(
+                            |e| e.play_time_in_samples > delayed_event.play_time_in_samples
+                        ) {
+                            self.delayed_events.insert( insert_point, delayed_event);
+                        } else {
+                            self.delayed_events.push(delayed_event);
+                        }
                     } else {
                         self.events.push(e);
                     }
