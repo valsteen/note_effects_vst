@@ -117,12 +117,12 @@ impl PluginParameters for NoteGeneratorPluginParameters {
 
     fn get_parameter_name(&self, index: i32) -> String {
         match index {
-            Self::CHANNEL => "CHANNEL",
-            Self::PITCH => "PITCH",
-            Self::VELOCITY => "VELOCITY",
+            Self::CHANNEL => "Channel",
+            Self::PITCH => "Pitch",
+            Self::VELOCITY => "Velocity",
             Self::NOTE_OFF_VELOCITY => "Note off velocity",
-            Self::PRESSURE => "PRESSURE",
-            Self::TRIGGER => "TRIGGER generated note",
+            Self::PRESSURE => "Pressure",
+            Self::TRIGGER => "Ttrigger generated note",
             _ => "",
         }
         .to_string()
