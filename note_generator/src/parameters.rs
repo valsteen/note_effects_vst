@@ -15,6 +15,9 @@ pub struct NoteGeneratorPluginParameters {
 }
 
 impl NoteGeneratorPluginParameters {
+    // TODO see https://doc.rust-lang.org/reference/items/enumerations.html
+    // let baz_discriminant = Foo::Baz as u32;
+    // [repr(i32)] can even be used on enums
     pub const CHANNEL: i32 = 0;
     pub const PITCH: i32 = 1;
     pub const VELOCITY: i32 = 2;
