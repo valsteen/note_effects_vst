@@ -76,7 +76,7 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
                         break None;
                     }
                     Some(event_at_position) => {
-                        if note_off_event.play_time_in_samples >= event_at_position.play_time_in_samples {
+                        if note_off_event.play_time_in_samples > event_at_position.play_time_in_samples {
                             position += 1;
                             continue;
                         } else {
