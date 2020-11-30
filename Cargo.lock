@@ -399,12 +399,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "primitive_enum"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac2c0ab7bc0e810304fadeba0e28d6f3c1f4f070e336f1bdcf9504a3be6b98c9"
-
-[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -600,7 +594,6 @@ dependencies = [
 name = "util"
 version = "0.1.0"
 dependencies = [
- "primitive_enum",
  "vst",
 ]
 

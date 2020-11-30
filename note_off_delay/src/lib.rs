@@ -17,6 +17,7 @@ use parameters::NoteOffDelayPluginParameters;
 use util::constants::NOTE_OFF;
 use util::debug::DebugSocket;
 use vst::event::Event::{Deprecated, Midi};
+use crate::parameters::Parameter;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -370,7 +371,7 @@ impl Plugin for NoteOffDelayPlugin {
 
         let note_off_delay = match self
             .parameters
-            .get_exponential_scale_parameter(NoteOffDelayPluginParameters::DELAY)
+            .get_exponential_scale_parameter(Parameter::Delay)
         {
             Some(value) => self.seconds_to_samples(value),
             _ => 0,

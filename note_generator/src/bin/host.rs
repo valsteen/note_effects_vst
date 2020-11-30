@@ -92,7 +92,12 @@ fn main() {
     instance.process(&mut audio_buffer);
     parameters.set_parameter(0, 0.2);
     instance.process(&mut audio_buffer);
-    println!("Initialized instance!");
+
+    println!("trigger: {}", parameters.get_parameter(5));
+    parameters.set_parameter(5, 0.7);
+    instance.process(&mut audio_buffer);
+
+
 
     println!("Closing instance...");
 }

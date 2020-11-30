@@ -14,9 +14,23 @@ pub struct NoteOffDelayPluginParameters {
     pub transfer: ParameterTransfer,
 }
 
-impl NoteOffDelayPluginParameters {
-    pub const DELAY: i32 = 0;
+#[repr(i32)]
+pub enum Parameter {
+    Delay = 0
+}
 
+
+impl From<i32> for Parameter {
+    fn from(i: i32) -> Self {
+        match i {
+            0 => Parameter::Delay,
+            _ => panic!("no such parameter")
+        }
+    }
+}
+
+
+impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
         return NoteOffDelayPluginParameters {
             host_mutex: Mutex::new(HostCallbackLock { host }),
@@ -36,7 +50,7 @@ impl NoteOffDelayPluginParameters {
     }
 
     #[inline]
-    pub fn get_exponential_scale_parameter(&self, index: i32) -> Option<f32> {
+    pub fn get_exponential_scale_parameter(&self, index: Parameter) -> Option<f32> {
         let x = self.transfer.get_parameter(index as usize);
         const FACTOR: f32 = 20.0;
         if x == 0.0 {
@@ -59,9 +73,9 @@ impl Default for NoteOffDelayPluginParameters {
 
 impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
-        match index {
-            Self::DELAY => {
-                if let Some(mut value) = self.get_exponential_scale_parameter(index) {
+        match Parameter::from(index) {
+            Parameter::Delay => {
+                if let Some(mut value) = self.get_exponential_scale_parameter(Parameter::Delay) {
                     let mut out = String::new();
                     if value >= 1.0 {
                         out += &*format!("{:.0}s ", value);
@@ -75,15 +89,13 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                     "Off"
                 }
             }
-            _ => "",
         }
         .to_string()
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
-        match index {
-            Self::DELAY => "Delay",
-            _ => "",
+        match Parameter::from(index) {
+            Parameter::Delay => "Delay"
         }
         .to_string()
     }
@@ -93,15 +105,14 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     }
 
     fn set_parameter(&self, index: i32, value: f32) {
-        match index {
-            Self::DELAY => {
+        match Parameter::from(index) {
+            Parameter::Delay => {
                 DebugSocket::send(&*format!("Parameter {} set to {}", index, value));
                 let old_value = self.get_parameter(index);
                 if value != old_value {
                     self.transfer.set_parameter(index as usize, value)
                 }
             }
-            _ => {}
         }
     }
 

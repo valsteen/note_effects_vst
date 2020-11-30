@@ -10,19 +10,12 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 mod parameters;
 
-use crate::parameters::NoteGeneratorPluginParameters;
+use crate::parameters::{NoteGeneratorPluginParameters, Parameter};
 use util::make_midi_event;
 use util::parameter_value_conversion::f32_to_bool;
+use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, CC, TIMBRECC, ZEROVALUE, PITCHWHEEL};
 
 plugin_main!(NoteGeneratorPlugin);
-
-const PRESSURE: u8 = 0xD0;
-const PITCHWHEEL: u8 = 0xE0;
-const ZEROVALUE: u8 = 0x40;
-const CC: u8 = 0xB0;
-const TIMBRECC: u8 = 0x4A;
-const NOTE_OFF: u8 = 0x80;
-const NOTE_ON: u8 = 0x90;
 
 #[derive(Default)]
 pub struct NoteGeneratorPlugin {
@@ -35,9 +28,9 @@ impl NoteGeneratorPlugin {
     fn get_midi_channel_event(
         &self,
         event_type: u8,
-        channel_parameter: i32,
-        pitch_parameter: i32,
-        velocity_parameter: i32,
+        channel_parameter: Parameter,
+        pitch_parameter: Parameter,
+        velocity_parameter: Parameter,
         delta: i32,
     ) -> MidiEvent {
         make_midi_event(
@@ -53,9 +46,9 @@ impl NoteGeneratorPlugin {
     fn get_current_note_on(&self, delta: i32) -> MidiEvent {
         self.get_midi_channel_event(
             NOTE_ON,
-            NoteGeneratorPluginParameters::CHANNEL,
-            NoteGeneratorPluginParameters::PITCH,
-            NoteGeneratorPluginParameters::VELOCITY,
+            Parameter::Channel,
+            Parameter::Pitch,
+            Parameter::Velocity,
             delta,
         )
     }
@@ -63,9 +56,9 @@ impl NoteGeneratorPlugin {
     fn get_current_note_off(&self, delta: i32) -> MidiEvent {
         self.get_midi_channel_event(
             NOTE_OFF,
-            NoteGeneratorPluginParameters::TRIGGERED_CHANNEL,
-            NoteGeneratorPluginParameters::TRIGGERED_PITCH,
-            NoteGeneratorPluginParameters::NOTE_OFF_VELOCITY,
+            Parameter::TriggeredChannel,
+            Parameter::TriggeredPitch,
+            Parameter::NoteOffVelocity,
             delta,
         )
     }
@@ -76,10 +69,10 @@ impl NoteGeneratorPlugin {
                 PRESSURE
                     + self
                         .parameters
-                        .get_byte_parameter(NoteGeneratorPluginParameters::CHANNEL)
+                        .get_byte_parameter(Parameter::Channel)
                         / 8,
                 self.parameters
-                    .get_byte_parameter(NoteGeneratorPluginParameters::PRESSURE),
+                    .get_byte_parameter(Parameter::Pressure),
                 0,
             ],
             delta,
@@ -91,7 +84,7 @@ impl NoteGeneratorPlugin {
             [
                 CC + self
                     .parameters
-                    .get_byte_parameter(NoteGeneratorPluginParameters::CHANNEL)
+                    .get_byte_parameter(Parameter::Channel)
                     / 8,
                 TIMBRECC,
                 ZEROVALUE,
@@ -106,7 +99,7 @@ impl NoteGeneratorPlugin {
                 PITCHWHEEL
                     + self
                         .parameters
-                        .get_byte_parameter(NoteGeneratorPluginParameters::CHANNEL)
+                        .get_byte_parameter(Parameter::Channel)
                         / 8,
                 0,
                 ZEROVALUE,
@@ -116,21 +109,22 @@ impl NoteGeneratorPlugin {
     }
 
     fn send_midi(&mut self) {
-        for (index, value) in self.parameters.transfer.iterate(true) {
-            match index as i32 {
-                NoteGeneratorPluginParameters::PRESSURE => {
+        for (index , value) in self.parameters.transfer.iterate(true) {
+            //let parameter = Parameter::try_from(index).unwrap();
+            match Parameter::from(index as i32) {
+                Parameter::Pressure => {
                     self.events.push(self.get_current_pressure(0));
                 }
 
-                NoteGeneratorPluginParameters::TRIGGER => {
+                Parameter::Trigger => {
                     if f32_to_bool(value) {
                         self.parameters.copy_parameter(
-                            NoteGeneratorPluginParameters::CHANNEL,
-                            NoteGeneratorPluginParameters::TRIGGERED_CHANNEL,
+                            Parameter::Channel,
+                            Parameter::TriggeredChannel,
                         );
                         self.parameters.copy_parameter(
-                            NoteGeneratorPluginParameters::PITCH,
-                            NoteGeneratorPluginParameters::TRIGGERED_PITCH,
+                            Parameter::Pitch,
+                            Parameter::TriggeredPitch,
                         );
                         self.events.push(self.get_current_note_on(0));
 
