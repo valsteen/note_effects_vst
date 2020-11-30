@@ -42,7 +42,7 @@ impl NoteOffDelayPluginParameters {
         if x == 0.0 {
             None
         } else {
-            Some((FACTOR.powf(x) - 1.) / (FACTOR - 1.0))
+            Some((FACTOR.powf(x) - 1.) * 5. / (FACTOR - 1.0))
         }
     }
 }

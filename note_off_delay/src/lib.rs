@@ -42,7 +42,10 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
     fn insert_event(&mut self, event: AbsoluteTimeEvent) {
         if let Some(insert_point) = self
             .iter()
-            .position(|e| event.play_time_in_samples > e.play_time_in_samples)
+            .position(
+                |event_at_position|
+                    event.play_time_in_samples < event_at_position.play_time_in_samples
+            )
         {
             self.insert(insert_point, event);
         } else {
@@ -72,12 +75,12 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
                     None => {
                         break None;
                     }
-                    Some(event) => {
-                        if event.play_time_in_samples < note_off_event.play_time_in_samples {
+                    Some(event_at_position) => {
+                        if note_off_event.play_time_in_samples >= event_at_position.play_time_in_samples {
                             position += 1;
                             continue;
                         } else {
-                            break Some(event);
+                            break Some(event_at_position);
                         }
                     }
                 }
@@ -92,9 +95,9 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
                         self.push(note_off_event);
                         break;
                     }
-                    Some(event) => {
-                        if event.play_time_in_samples < note_off_event.play_time_in_samples {
-                            if let OwnMidi(midi_event) = event.event {
+                    Some(event_at_position) => {
+                        if event_at_position.play_time_in_samples <= note_off_event.play_time_in_samples {
+                            if let OwnMidi(midi_event) = event_at_position.event {
                                 if (midi_event.data[0] & 0x0F)
                                     == (note_off_midi_event.data[0] & 0x0F)
                                     && midi_event.data[1] == note_off_midi_event.data[1]
@@ -145,18 +148,24 @@ impl<'a> Iterator for DelayedEventConsumer<'a> {
 
             if play_time_in_samples < self.current_time_in_samples {
                 DebugSocket::send(&*format!(
-                    "too late for {}, removing",
-                    format_own_event(&delayed_event.event)
+                    "too late for {} ( planned: {} , current buffer: {} - {}, removing",
+                    format_own_event(&delayed_event.event),
+                    delayed_event.play_time_in_samples,
+                    self.current_time_in_samples,
+                    self.current_time_in_samples + self.samples_in_buffer
                 ));
                 self.events.remove(0);
                 continue;
             };
 
-            if play_time_in_samples >= self.current_time_in_samples + self.samples_in_buffer {
-                DebugSocket::send(&*format!(
-                    "too soon for {}",
-                    format_own_event(&delayed_event.event)
-                ));
+            if play_time_in_samples > self.current_time_in_samples + self.samples_in_buffer{
+                // DebugSocket::send(&*format!(
+                //     "too soon for {} ( planned: {} , current buffer: {} - {}",
+                //     format_own_event(&delayed_event.event),
+                //     delayed_event.play_time_in_samples,
+                //     self.current_time_in_samples,
+                //     self.current_time_in_samples + self.samples_in_buffer
+                // ));
                 return None;
             }
 
@@ -174,8 +183,10 @@ impl<'a> Iterator for DelayedEventConsumer<'a> {
             }
 
             DebugSocket::send(&*format!(
-                "will do {}",
-                format_own_event(&delayed_event.event)
+                "will do {} current_time={} ( play_time_in_samples={} )",
+                format_own_event(&delayed_event.event),
+                self.current_time_in_samples,
+                delayed_event.play_time_in_samples
             ));
 
             return Some(delayed_event.event);
@@ -265,7 +276,7 @@ impl NoteOffDelayPlugin {
 
     fn debug_events_in(&mut self, events: &api::Events) {
         for e in events.events() {
-            DebugSocket::send(&*format_event(&e));
+            DebugSocket::send(&*(format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
         }
     }
 
@@ -378,6 +389,18 @@ impl Plugin for NoteOffDelayPlugin {
                                 + self.current_time_in_samples,
                         })
                     } else {
+                        // drop any note off that was planned already
+                        if let Some(delayed_note_off_position) = self.events_queue.iter().position(|delayed_note_off|
+                            if let OwnMidi(note_off) = delayed_note_off.event {
+                                (note_off.data[0] & 0x0F) == (e.data[0] & 0x0F) && e.data[1] == note_off.data[1]
+                            } else {
+                                false
+                            }
+                        ) {
+                            let note_off = self.events_queue.remove(delayed_note_off_position);
+                            DebugSocket::send(&*format!("removing delayed note off {}", format_own_event(&note_off.event)));
+                        }
+
                         self.events_queue.insert_event(AbsoluteTimeEvent {
                             event: OwnMidi(e),
                             play_time_in_samples: e.delta_frames as usize

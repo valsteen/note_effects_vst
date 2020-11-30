@@ -18,7 +18,7 @@ pub enum OwnedEvent {
 
 // by implementing this trait we may just give a OwnedEvent iterator to send_buffer.send_events,
 // without having to hold a SysExEvent and its lifetime issues due to the &[u8] ref
-// longer that needed
+// longer than needed
 
 impl WriteIntoPlaceholder for OwnedEvent {
     fn write_into(&self, out: &mut PlaceholderEvent) {
