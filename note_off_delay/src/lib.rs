@@ -393,7 +393,7 @@ impl Plugin for NoteOffDelayPlugin {
                         // drop any note off that was planned already
                         if let Some(delayed_note_off_position) = self.events_queue.iter().position(|delayed_note_off|
                             if let OwnMidi(note_off) = delayed_note_off.event {
-                                (note_off.data[0] & 0x0F) == (e.data[0] & 0x0F) && e.data[1] == note_off.data[1]
+                                (note_off.data[0] & 0x0F) == (e.data[0] & 0x0F) && e.data[1] == note_off.data[1] && (note_off.data[0] & 0xF0 == 0x80)
                             } else {
                                 false
                             }
