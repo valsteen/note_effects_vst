@@ -24,6 +24,9 @@ impl DebugSocket {
     }
 
     pub fn send(debug_str: &str) {
+        if debug_str.len() == 0 {
+            return
+        }
         let debug_string = debug_str.to_owned() + "\n";
         unsafe {
             if let None = DEBUG_SOCKET {

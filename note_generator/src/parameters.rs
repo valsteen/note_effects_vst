@@ -1,9 +1,9 @@
 use std::sync::Mutex;
+use util::constants::{C0, NOTE_NAMES};
 use util::parameter_value_conversion::{bool_to_f32, byte_to_f32, f32_to_bool, f32_to_byte};
 use util::HostCallbackLock;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
-use util::constants::{NOTE_NAMES, C0};
 
 pub struct NoteGeneratorPluginParameters {
     pub host: Mutex<HostCallbackLock>,
@@ -19,9 +19,8 @@ pub enum Parameter {
     Pressure,
     Trigger,
     TriggeredPitch,
-    TriggeredChannel
+    TriggeredChannel,
 }
-
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
@@ -34,11 +33,10 @@ impl From<i32> for Parameter {
             5 => Parameter::Trigger,
             6 => Parameter::TriggeredPitch,
             7 => Parameter::TriggeredChannel,
-            _ => panic!(format!("No such Parameter {}", i))
+            _ => panic!(format!("No such Parameter {}", i)),
         }
     }
 }
-
 
 impl NoteGeneratorPluginParameters {
     #[inline]
@@ -177,17 +175,19 @@ impl PluginParameters for NoteGeneratorPluginParameters {
                 }
                 Err(_) => false,
             },
-            Parameter::Velocity | Parameter::NoteOffVelocity | Parameter::Pressure => match text.parse::<u8>() {
-                Ok(n) => {
-                    if n < 128 {
-                        self.set_byte_parameter(Parameter::Velocity, n);
-                        true
-                    } else {
-                        false
+            Parameter::Velocity | Parameter::NoteOffVelocity | Parameter::Pressure => {
+                match text.parse::<u8>() {
+                    Ok(n) => {
+                        if n < 128 {
+                            self.set_byte_parameter(Parameter::Velocity, n);
+                            true
+                        } else {
+                            false
+                        }
                     }
+                    Err(_) => false,
                 }
-                Err(_) => false,
-            },
+            }
             Parameter::Pitch => match NOTE_NAMES.iter().position(|&s| text.starts_with(s)) {
                 None => false,
                 Some(position) => {
@@ -225,11 +225,15 @@ impl PluginParameters for NoteGeneratorPluginParameters {
     }
 
     fn get_preset_data(&self) -> Vec<u8> {
-        (0..8).map(|i| self.get_byte_parameter(Parameter::from(i))).collect()
+        (0..8)
+            .map(|i| self.get_byte_parameter(Parameter::from(i)))
+            .collect()
     }
 
     fn get_bank_data(&self) -> Vec<u8> {
-        (0..8).map(|i: i32| self.get_byte_parameter(Parameter::from(i))).collect()
+        (0..8)
+            .map(|i: i32| self.get_byte_parameter(Parameter::from(i)))
+            .collect()
     }
 
     fn load_preset_data(&self, data: &[u8]) {

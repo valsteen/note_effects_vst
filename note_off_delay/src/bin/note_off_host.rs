@@ -20,7 +20,7 @@ impl Host for SampleHost {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let arg = if args.len() < 2 {
-        "target/debug/libnote_generator.dylib"
+        "target/debug/libnote_off_delay.dylib"
     } else {
         &args[1]
     };
@@ -74,6 +74,8 @@ fn main() {
     println!("{}", parameters.get_parameter_label(0));
     println!("{}", parameters.get_parameter_name(0));
     println!("{}", parameters.get_parameter_text(0));
+    println!("{}", parameters.get_parameter_label(1));
+    println!("{}", parameters.get_parameter_name(1));
 
     instance.process(&mut audio_buffer);
     let parameters = instance.get_parameter_object();
@@ -93,9 +95,15 @@ fn main() {
     parameters.set_parameter(0, 0.2);
     instance.process(&mut audio_buffer);
 
-    println!("trigger: {}", parameters.get_parameter(5));
-    parameters.set_parameter(5, 0.7);
+    println!("{}", parameters.get_parameter(0));
+    parameters.set_parameter(0, 0.7);
     instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(0));
+
+    println!("{}", parameters.get_parameter(1));
+    parameters.set_parameter(1, 0.7);
+    instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(1));
 
     println!("Closing instance...");
 }

@@ -11,9 +11,9 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 mod parameters;
 
 use crate::parameters::{NoteGeneratorPluginParameters, Parameter};
+use util::constants::{CC, NOTE_OFF, NOTE_ON, PITCHWHEEL, PRESSURE, TIMBRECC, ZEROVALUE};
 use util::make_midi_event;
 use util::parameter_value_conversion::f32_to_bool;
-use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, CC, TIMBRECC, ZEROVALUE, PITCHWHEEL};
 
 plugin_main!(NoteGeneratorPlugin);
 
@@ -66,13 +66,8 @@ impl NoteGeneratorPlugin {
     fn get_current_pressure(&self, delta: i32) -> MidiEvent {
         make_midi_event(
             [
-                PRESSURE
-                    + self
-                        .parameters
-                        .get_byte_parameter(Parameter::Channel)
-                        / 8,
-                self.parameters
-                    .get_byte_parameter(Parameter::Pressure),
+                PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+                self.parameters.get_byte_parameter(Parameter::Pressure),
                 0,
             ],
             delta,
@@ -82,10 +77,7 @@ impl NoteGeneratorPlugin {
     fn get_current_timber(&self, delta: i32) -> MidiEvent {
         make_midi_event(
             [
-                CC + self
-                    .parameters
-                    .get_byte_parameter(Parameter::Channel)
-                    / 8,
+                CC + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 TIMBRECC,
                 ZEROVALUE,
             ],
@@ -96,11 +88,7 @@ impl NoteGeneratorPlugin {
     fn get_current_pitchwheel(&self, delta: i32) -> MidiEvent {
         make_midi_event(
             [
-                PITCHWHEEL
-                    + self
-                        .parameters
-                        .get_byte_parameter(Parameter::Channel)
-                        / 8,
+                PITCHWHEEL + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 0,
                 ZEROVALUE,
             ],
@@ -109,7 +97,7 @@ impl NoteGeneratorPlugin {
     }
 
     fn send_midi(&mut self) {
-        for (index , value) in self.parameters.transfer.iterate(true) {
+        for (index, value) in self.parameters.transfer.iterate(true) {
             //let parameter = Parameter::try_from(index).unwrap();
             match Parameter::from(index as i32) {
                 Parameter::Pressure => {
@@ -118,14 +106,10 @@ impl NoteGeneratorPlugin {
 
                 Parameter::Trigger => {
                     if f32_to_bool(value) {
-                        self.parameters.copy_parameter(
-                            Parameter::Channel,
-                            Parameter::TriggeredChannel,
-                        );
-                        self.parameters.copy_parameter(
-                            Parameter::Pitch,
-                            Parameter::TriggeredPitch,
-                        );
+                        self.parameters
+                            .copy_parameter(Parameter::Channel, Parameter::TriggeredChannel);
+                        self.parameters
+                            .copy_parameter(Parameter::Pitch, Parameter::TriggeredPitch);
                         self.events.push(self.get_current_note_on(0));
 
                         // delay those expressions with delta frames, seem to do the trick

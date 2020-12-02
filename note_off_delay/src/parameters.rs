@@ -7,7 +7,7 @@ use util::debug::DebugSocket;
 use util::parameter_value_conversion::{byte_to_f32, f32_to_byte};
 use util::HostCallbackLock;
 
-const PARAMETER_COUNT: usize = 1;
+const PARAMETER_COUNT: usize = 2;
 
 pub struct NoteOffDelayPluginParameters {
     pub host_mutex: Mutex<HostCallbackLock>,
@@ -17,20 +17,18 @@ pub struct NoteOffDelayPluginParameters {
 #[repr(i32)]
 pub enum Parameter {
     Delay = 0,
-    MaxNotes
+    MaxNotes,
 }
-
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
             0 => Parameter::Delay,
             1 => Parameter::MaxNotes,
-            _ => panic!("no such parameter")
+            _ => panic!("no such parameter {}", i),
         }
     }
 }
-
 
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
@@ -61,6 +59,10 @@ impl NoteOffDelayPluginParameters {
             Some((FACTOR.powf(x) - 1.) * 5. / (FACTOR - 1.0))
         }
     }
+
+    pub fn get_max_notes(&self) -> u8 {
+        self.get_byte_parameter(Parameter::MaxNotes) / 4
+    }
 }
 
 impl Default for NoteOffDelayPluginParameters {
@@ -86,13 +88,17 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                     if value > 0.0 {
                         out += &*format!("{:3.0}ms", value * 1000.0);
                     }
-                    return out;
+                    out
                 } else {
-                    "Off"
-                }.to_string()
+                    "Off".to_string()
+                }
             }
             Parameter::MaxNotes => {
-                format!("{}", self.get_byte_parameter(Parameter::MaxNotes) / 4)
+                if self.get_parameter(Parameter::MaxNotes as i32) == 0.0 {
+                    "Off".to_string()
+                } else {
+                    format!("{}", self.get_max_notes())
+                }
             }
         }
     }
@@ -100,7 +106,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_name(&self, index: i32) -> String {
         match Parameter::from(index) {
             Parameter::Delay => "Delay",
-            Parameter::MaxNotes => "Max Notes"
+            Parameter::MaxNotes => "Max Notes",
         }
         .to_string()
     }
@@ -117,9 +123,9 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                 if value != old_value {
                     self.transfer.set_parameter(index as usize, value)
                 }
-            },
+            }
             Parameter::MaxNotes => {
-                let old_value = self.get_byte_parameter(Parameter::MaxNotes) / 4;
+                let old_value = self.get_max_notes();
                 let byte_value = f32_to_byte(value) / 4;
                 if byte_value != old_value {
                     self.transfer.set_parameter(index as usize, value)

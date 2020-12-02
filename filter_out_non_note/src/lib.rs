@@ -3,9 +3,8 @@ extern crate vst;
 
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-use vst::event::{MidiEvent, Event};
-
 
 plugin_main!(FilterOutNonNote);
 
@@ -31,7 +30,6 @@ impl FilterOutNonNote {
         self.events.clear();
     }
 }
-
 
 impl Plugin for FilterOutNonNote {
     fn get_info(&self) -> Info {

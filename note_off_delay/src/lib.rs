@@ -8,112 +8,19 @@ use std::sync::Arc;
 
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::event::Event;
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
-use crate::events::OwnedEvent::{OwnDeprecated, OwnMidi, OwnSysEx};
-use crate::events::{OwnSysExEvent, OwnedEvent};
-use parameters::NoteOffDelayPluginParameters;
-use util::constants::NOTE_OFF;
-use util::debug::DebugSocket;
-use vst::event::Event::Midi;
+use crate::events::format_midi_event;
 use crate::parameters::Parameter;
-use events::{AbsoluteTimeEvent, AbsoluteTimeEventVector};
+use events::{AbsoluteTimeEvent, AbsoluteTimeEventVector, AbsoluteTimeEventVectorMethods};
+use parameters::NoteOffDelayPluginParameters;
+use std::collections::HashMap;
+use util::constants::{NOTE_OFF, NOTE_ON};
+use util::debug::DebugSocket;
+use util::make_midi_event;
+use vst::event::Event::Midi;
 
 plugin_main!(NoteOffDelayPlugin);
-
-/*
-    this contains midi events that have a play time not relative to the current buffer,
-    but to the amount of samples since the plugin was active
-*/
-
-trait AbsoluteTimeEventVectorMethods {
-    fn insert_event(&mut self, event: AbsoluteTimeEvent);
-    fn merge_notes_off(&mut self, notes_off: AbsoluteTimeEventVector, note_off_delay: usize);
-}
-
-impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
-    // called when receiving events ; caller takes care of not pushing note offs in a first phase
-    fn insert_event(&mut self, event: AbsoluteTimeEvent) {
-        if let Some(insert_point) = self
-            .iter()
-            .position(
-                |event_at_position|
-                    event.play_time_in_samples < event_at_position.play_time_in_samples
-            )
-        {
-            self.insert(insert_point, event);
-        } else {
-            self.push(event);
-        }
-    }
-
-    // caller sends the notes off after inserting other events, so we know which notes are planned,
-    // and insert notes off with the configured delay while making sure that between a note off
-    // initial position and its final position, no note of same pitch and channel is triggered,
-    // otherwise we will interrupt this second instance
-    fn merge_notes_off(&mut self, notes_off: AbsoluteTimeEventVector, note_off_delay: usize) {
-        for mut note_off_event in notes_off {
-            let note_off_midi_event = match &note_off_event.event {
-                OwnMidi(e) => e,
-                _ => {
-                    panic!("we're supposed to only have note off events in that list")
-                }
-            };
-
-            let mut iterator = self.iter();
-            let mut position = 0;
-
-            // find original position
-            let mut current_event: Option<&AbsoluteTimeEvent> = loop {
-                match iterator.next() {
-                    None => {
-                        break None;
-                    }
-                    Some(event_at_position) => {
-                        if note_off_event.play_time_in_samples > event_at_position.play_time_in_samples {
-                            position += 1;
-                            continue;
-                        } else {
-                            break Some(event_at_position);
-                        }
-                    }
-                }
-            };
-
-            // add delay
-            note_off_event.play_time_in_samples += note_off_delay;
-
-            loop {
-                match current_event {
-                    None => {
-                        self.push(note_off_event);
-                        break;
-                    }
-                    Some(event_at_position) => {
-                        if event_at_position.play_time_in_samples <= note_off_event.play_time_in_samples {
-                            if let OwnMidi(midi_event) = event_at_position.event {
-                                if (midi_event.data[0] & 0x0F)
-                                    == (note_off_midi_event.data[0] & 0x0F)
-                                    && midi_event.data[1] == note_off_midi_event.data[1]
-                                {
-                                    // same note on or off already happen between its original position and its final position, so skip it to prevent interrupting a new note
-                                    break;
-                                }
-                            }
-                            position += 1;
-                            current_event = iterator.next();
-                            continue;
-                        }
-
-                        self.insert(position, note_off_event);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
 
 pub struct NoteOffDelayPlugin {
     send_buffer: SendEventBuffer,
@@ -121,72 +28,7 @@ pub struct NoteOffDelayPlugin {
     sample_rate: f32,
     current_time_in_samples: usize,
     events_queue: AbsoluteTimeEventVector,
-}
-
-struct DelayedEventConsumer<'a> {
-    samples_in_buffer: usize,
-    events: &'a mut AbsoluteTimeEventVector,
-    current_time_in_samples: usize,
-}
-
-impl<'a> Iterator for DelayedEventConsumer<'a> {
-    type Item = OwnedEvent;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.events.is_empty() {
-                return None;
-            }
-
-            let delayed_event = &self.events[0];
-            let play_time_in_samples = delayed_event.play_time_in_samples;
-
-            if play_time_in_samples < self.current_time_in_samples {
-                DebugSocket::send(&*format!(
-                    "too late for {} ( planned: {} , current buffer: {} - {}, removing",
-                    events::format_own_event(&delayed_event.event),
-                    delayed_event.play_time_in_samples,
-                    self.current_time_in_samples,
-                    self.current_time_in_samples + self.samples_in_buffer
-                ));
-                self.events.remove(0);
-                continue;
-            };
-
-            if play_time_in_samples > self.current_time_in_samples + self.samples_in_buffer{
-                // DebugSocket::send(&*format!(
-                //     "too soon for {} ( planned: {} , current buffer: {} - {}",
-                //     format_own_event(&delayed_event.event),
-                //     delayed_event.play_time_in_samples,
-                //     self.current_time_in_samples,
-                //     self.current_time_in_samples + self.samples_in_buffer
-                // ));
-                return None;
-            }
-
-            let mut delayed_event: AbsoluteTimeEvent = self.events.remove(0);
-
-            // until we know that the notes can be played in the current buffer, we don't know the final
-            // delta frame
-            let delta_frames =
-                (delayed_event.play_time_in_samples - self.current_time_in_samples) as i32;
-
-            match &mut delayed_event.event {
-                OwnMidi(e) => e.delta_frames = delta_frames,
-                OwnSysEx(e) => e.delta_frames = delta_frames,
-                OwnDeprecated(e) => e.delta_frames = delta_frames,
-            }
-
-            DebugSocket::send(&*format!(
-                "will do {} current_time={} ( play_time_in_samples={} )",
-                events::format_own_event(&delayed_event.event),
-                self.current_time_in_samples,
-                delayed_event.play_time_in_samples
-            ));
-
-            return Some(delayed_event.event);
-        }
-    }
+    current_playing_notes: CurrentPlayingNotes,
 }
 
 impl Default for NoteOffDelayPlugin {
@@ -197,6 +39,7 @@ impl Default for NoteOffDelayPlugin {
             sample_rate: 44100.0,
             current_time_in_samples: 0,
             events_queue: Vec::new(),
+            current_playing_notes: Default::default(),
         }
     }
 }
@@ -210,8 +53,17 @@ impl NoteOffDelayPlugin {
                 current_time_in_samples: self.current_time_in_samples,
             };
 
+            let mut events: Vec<AbsoluteTimeEvent> = event_consumer.collect();
+            let notes_off = self
+                .current_playing_notes
+                .update(&events, self.parameters.get_max_notes());
+
+            for note_off in notes_off {
+                events.push(note_off);
+            }
+
             self.send_buffer
-                .send_events(event_consumer, &mut host_callback_lock.host);
+                .send_events(events, &mut host_callback_lock.host);
         }
     }
 
@@ -226,7 +78,10 @@ impl NoteOffDelayPlugin {
 
     fn debug_events_in(&mut self, events: &api::Events) {
         for e in events.events() {
-            DebugSocket::send(&*(events::format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
+            DebugSocket::send(
+                &*(events::format_event(&e)
+                    + &*format!(" current time={}", self.current_time_in_samples)),
+            );
         }
     }
 
@@ -250,7 +105,7 @@ impl Plugin for NoteOffDelayPlugin {
             name: "Note Off Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213173,
-            parameters: 1,
+            parameters: 2,
             category: Category::Effect,
             initial_delay: 0,
             version: 1,
@@ -276,6 +131,7 @@ impl Plugin for NoteOffDelayPlugin {
             sample_rate: 44100.0,
             current_time_in_samples: 0,
             events_queue: Vec::new(),
+            current_playing_notes: Default::default(),
         }
     }
 
@@ -332,43 +188,41 @@ impl Plugin for NoteOffDelayPlugin {
             // TODO: minimum time, maximum time ( with delay )
             match event {
                 Midi(e) => {
-                    if e.data[0] >= NOTE_OFF && e.data[0] < NOTE_OFF + 0x10 {
-                        notes_off.insert_event(AbsoluteTimeEvent {
-                            event: OwnMidi(e),
-                            play_time_in_samples: e.delta_frames as usize
-                                + self.current_time_in_samples,
-                        })
-                    } else {
-                        // drop any note off that was planned already
-                        if let Some(delayed_note_off_position) = self.events_queue.iter().position(|delayed_note_off|
-                            if let OwnMidi(note_off) = delayed_note_off.event {
-                                (note_off.data[0] & 0x0F) == (e.data[0] & 0x0F) && e.data[1] == note_off.data[1] && (note_off.data[0] & 0xF0 == 0x80)
-                            } else {
-                                false
-                            }
-                        ) {
-                            let note_off = self.events_queue.remove(delayed_note_off_position);
-                            DebugSocket::send(&*format!("removing delayed note off {}", events::format_own_event(&note_off.event)));
+                    match e.data[0] {
+                        x if x >= NOTE_OFF && x < NOTE_OFF + 0x10 => {
+                            notes_off.insert_event(AbsoluteTimeEvent {
+                                event: e,
+                                play_time_in_samples: e.delta_frames as usize
+                                    + self.current_time_in_samples,
+                            })
                         }
+                        x if x >= NOTE_ON && x < NOTE_ON + 0x10 => {
+                            // drop any note off that was planned already
+                            if let Some(delayed_note_off_position) =
+                                self.events_queue.iter().position(|delayed_note_off| {
+                                    (delayed_note_off.event.data[0] & 0x0F) == (e.data[0] & 0x0F)
+                                        && e.data[1] == delayed_note_off.event.data[1]
+                                        && (delayed_note_off.event.data[0] & 0xF0 == 0x80)
+                                })
+                            {
+                                let note_off = self.events_queue.remove(delayed_note_off_position);
+                                DebugSocket::send(&*format!(
+                                    "removing delayed note off {}",
+                                    format_midi_event(&note_off.event)
+                                ));
+                            }
 
-                        self.events_queue.insert_event(AbsoluteTimeEvent {
-                            event: OwnMidi(e),
-                            play_time_in_samples: e.delta_frames as usize
-                                + self.current_time_in_samples,
-                        })
+                            self.events_queue.insert_event(AbsoluteTimeEvent {
+                                event: e,
+                                play_time_in_samples: e.delta_frames as usize
+                                    + self.current_time_in_samples,
+                            })
+                        }
+                        // ignore everything else for now ( CC, expressions, ... )
+                        _ => {}
                     }
                 }
-                Event::SysEx(e) => self.events_queue.insert_event(AbsoluteTimeEvent {
-                    event: OwnSysEx(OwnSysExEvent {
-                        payload: Vec::from(e.payload),
-                        delta_frames: e.delta_frames,
-                    }),
-                    play_time_in_samples: e.delta_frames as usize + self.current_time_in_samples,
-                }),
-                Event::Deprecated(e) => self.events_queue.insert_event(AbsoluteTimeEvent {
-                    event: OwnDeprecated(e),
-                    play_time_in_samples: e.delta_frames as usize + self.current_time_in_samples,
-                }),
+                _ => {}
             };
         }
 
@@ -377,5 +231,135 @@ impl Plugin for NoteOffDelayPlugin {
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
         Arc::clone(&self.parameters) as Arc<dyn vst::plugin::PluginParameters>
+    }
+}
+
+type CurrentPlayingNotes = HashMap<[u8; 2], AbsoluteTimeEvent>;
+
+pub trait CurrentPlayingNotesMethods {
+    fn oldest(&self) -> Option<AbsoluteTimeEvent>;
+    fn add_event(&mut self, event: AbsoluteTimeEvent, max_notes: u8) -> Option<AbsoluteTimeEvent>;
+    fn update(&mut self, events: &[AbsoluteTimeEvent], max_notes: u8) -> Vec<AbsoluteTimeEvent>;
+}
+
+fn format_playing_notes(v : &CurrentPlayingNotes) -> String {
+    v.keys().fold( String::new(), |acc, x| format!("{}, {} {}", acc, x[0], x[1].to_string()))
+}
+
+
+impl CurrentPlayingNotesMethods for CurrentPlayingNotes {
+    fn oldest(&self) -> Option<AbsoluteTimeEvent> {
+        let oldest_option = self
+            .values()
+            .min_by( |a, b| a.play_time_in_samples.cmp(&b.play_time_in_samples) );
+
+        if let Some(oldest) = oldest_option {
+            Some(oldest.clone())
+        } else {
+            None
+        }
+    }
+
+    fn add_event(&mut self, event: AbsoluteTimeEvent, max_notes: u8) -> Option<AbsoluteTimeEvent> {
+        self.insert([event.event.data[0] & 0x0F, event.event.data[1]], event);
+        if max_notes > 0 && self.len() > max_notes as usize {
+            if let Some(event_to_remove) = self.oldest() {
+                let note_off = AbsoluteTimeEvent {
+                    event: make_midi_event(
+                        [
+                            NOTE_OFF + (event_to_remove.event.data[0] & 0x0F),
+                            event_to_remove.event.data[1],
+                            event_to_remove.event.data[2],
+                        ],
+                        event_to_remove.event.delta_frames,
+                    ),
+                    play_time_in_samples: event_to_remove.play_time_in_samples,
+                };
+                self.remove_entry(&[event_to_remove.event.data[0] & 0x0F, event_to_remove.event.data[1]]);
+                return Some(note_off);
+            }
+        }
+        return None;
+    }
+
+    fn update(&mut self, events: &[AbsoluteTimeEvent], max_notes: u8) -> Vec<AbsoluteTimeEvent> {
+        let mut notes_off: Vec<AbsoluteTimeEvent> = Vec::new();
+
+        for event in events {
+            match event.event.data[0] {
+                x if x > NOTE_OFF && x < NOTE_OFF + 0x10 => {
+                    self.remove(&[event.event.data[0] & 0x0F, event.event.data[1]]);
+                }
+                x if x > NOTE_ON && x < NOTE_ON + 0x10 => {
+                    // TODO ideally the corresponding note off should be also eliminated. maybe after refactoring to states
+                    let note_off_option = self.add_event((*event).clone(), max_notes);
+                    if let Some(note_off) = note_off_option {
+                        notes_off.push(note_off);
+                    }
+                }
+                _ => {}
+            }
+        }
+        notes_off
+    }
+}
+
+struct DelayedEventConsumer<'a> {
+    samples_in_buffer: usize,
+    events: &'a mut AbsoluteTimeEventVector,
+    current_time_in_samples: usize,
+}
+
+impl<'a> Iterator for DelayedEventConsumer<'a> {
+    type Item = AbsoluteTimeEvent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.events.is_empty() {
+                return None;
+            }
+
+            let delayed_event = &self.events[0];
+            let play_time_in_samples = delayed_event.play_time_in_samples;
+
+            if play_time_in_samples < self.current_time_in_samples {
+                DebugSocket::send(&*format!(
+                    "too late for {} ( planned: {} , current buffer: {} - {}, removing",
+                    format_midi_event(&delayed_event.event),
+                    delayed_event.play_time_in_samples,
+                    self.current_time_in_samples,
+                    self.current_time_in_samples + self.samples_in_buffer
+                ));
+                self.events.remove(0);
+                continue;
+            };
+
+            if play_time_in_samples > self.current_time_in_samples + self.samples_in_buffer {
+                // DebugSocket::send(&*format!(
+                //     "too soon for {} ( planned: {} , current buffer: {} - {}",
+                //     &delayed_event.event,
+                //     delayed_event.play_time_in_samples,
+                //     self.current_time_in_samples,
+                //     self.current_time_in_samples + self.samples_in_buffer
+                // ));
+                return None;
+            }
+
+            let mut delayed_event: AbsoluteTimeEvent = self.events.remove(0);
+
+            // until we know that the notes can be played in the current buffer, we don't know the final
+            // delta frame
+            delayed_event.event.delta_frames =
+                (delayed_event.play_time_in_samples - self.current_time_in_samples) as i32;
+
+            DebugSocket::send(&*format!(
+                "will do {} current_time={} ( play_time_in_samples={} )",
+                format_midi_event(&delayed_event.event),
+                self.current_time_in_samples,
+                delayed_event.play_time_in_samples
+            ));
+
+            return Some(delayed_event);
+        }
     }
 }
