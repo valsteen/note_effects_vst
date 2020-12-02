@@ -16,7 +16,8 @@ pub struct NoteOffDelayPluginParameters {
 
 #[repr(i32)]
 pub enum Parameter {
-    Delay = 0
+    Delay = 0,
+    MaxNotes
 }
 
 
@@ -24,6 +25,7 @@ impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
             0 => Parameter::Delay,
+            1 => Parameter::MaxNotes,
             _ => panic!("no such parameter")
         }
     }
@@ -39,12 +41,12 @@ impl NoteOffDelayPluginParameters {
     }
 
     #[inline]
-    pub fn get_byte_parameter(&self, index: i32) -> u8 {
+    pub fn get_byte_parameter(&self, index: Parameter) -> u8 {
         f32_to_byte(self.transfer.get_parameter(index as usize))
     }
 
     #[inline]
-    fn set_byte_parameter(&self, index: i32, value: u8) {
+    fn set_byte_parameter(&self, index: Parameter, value: u8) {
         self.transfer
             .set_parameter(index as usize, byte_to_f32(value))
     }
@@ -87,15 +89,18 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                     return out;
                 } else {
                     "Off"
-                }
+                }.to_string()
+            }
+            Parameter::MaxNotes => {
+                format!("{}", self.get_byte_parameter(Parameter::MaxNotes) / 4)
             }
         }
-        .to_string()
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
         match Parameter::from(index) {
-            Parameter::Delay => "Delay"
+            Parameter::Delay => "Delay",
+            Parameter::MaxNotes => "Max Notes"
         }
         .to_string()
     }
@@ -112,31 +117,38 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                 if value != old_value {
                     self.transfer.set_parameter(index as usize, value)
                 }
+            },
+            Parameter::MaxNotes => {
+                let old_value = self.get_byte_parameter(Parameter::MaxNotes) / 4;
+                let byte_value = f32_to_byte(value) / 4;
+                if byte_value != old_value {
+                    self.transfer.set_parameter(index as usize, value)
+                }
             }
         }
     }
 
     fn get_preset_data(&self) -> Vec<u8> {
         (0..PARAMETER_COUNT)
-            .map(|i| self.get_byte_parameter(i as i32))
+            .map(|i| self.get_byte_parameter(Parameter::from(i as i32)))
             .collect()
     }
 
     fn get_bank_data(&self) -> Vec<u8> {
         (0..PARAMETER_COUNT)
-            .map(|i| self.get_byte_parameter(i as i32))
+            .map(|i| self.get_byte_parameter(Parameter::from(i as i32)))
             .collect()
     }
 
     fn load_preset_data(&self, data: &[u8]) {
         for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(i as i32, *item);
+            self.set_byte_parameter(Parameter::from(i as i32), *item);
         }
     }
 
     fn load_bank_data(&self, data: &[u8]) {
         for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(i as i32, *item);
+            self.set_byte_parameter(Parameter::from(i as i32), *item);
         }
     }
 }

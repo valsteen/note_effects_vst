@@ -16,8 +16,9 @@ use crate::events::{OwnSysExEvent, OwnedEvent};
 use parameters::NoteOffDelayPluginParameters;
 use util::constants::NOTE_OFF;
 use util::debug::DebugSocket;
-use vst::event::Event::{Deprecated, Midi};
+use vst::event::Event::Midi;
 use crate::parameters::Parameter;
+use events::{AbsoluteTimeEvent, AbsoluteTimeEventVector};
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -25,13 +26,6 @@ plugin_main!(NoteOffDelayPlugin);
     this contains midi events that have a play time not relative to the current buffer,
     but to the amount of samples since the plugin was active
 */
-
-struct AbsoluteTimeEvent {
-    event: OwnedEvent,
-    play_time_in_samples: usize,
-}
-
-type AbsoluteTimeEventVector = Vec<AbsoluteTimeEvent>;
 
 trait AbsoluteTimeEventVectorMethods {
     fn insert_event(&mut self, event: AbsoluteTimeEvent);
@@ -150,7 +144,7 @@ impl<'a> Iterator for DelayedEventConsumer<'a> {
             if play_time_in_samples < self.current_time_in_samples {
                 DebugSocket::send(&*format!(
                     "too late for {} ( planned: {} , current buffer: {} - {}, removing",
-                    format_own_event(&delayed_event.event),
+                    events::format_own_event(&delayed_event.event),
                     delayed_event.play_time_in_samples,
                     self.current_time_in_samples,
                     self.current_time_in_samples + self.samples_in_buffer
@@ -185,7 +179,7 @@ impl<'a> Iterator for DelayedEventConsumer<'a> {
 
             DebugSocket::send(&*format!(
                 "will do {} current_time={} ( play_time_in_samples={} )",
-                format_own_event(&delayed_event.event),
+                events::format_own_event(&delayed_event.event),
                 self.current_time_in_samples,
                 delayed_event.play_time_in_samples
             ));
@@ -204,51 +198,6 @@ impl Default for NoteOffDelayPlugin {
             current_time_in_samples: 0,
             events_queue: Vec::new(),
         }
-    }
-}
-
-fn format_event(e: &Event) -> String {
-    match e {
-        Midi(e) => {
-            format!(
-                "[{:#04X} {:#04X} {:#04X}] delta_frames={}",
-                e.data[0], e.data[1], e.data[2], e.delta_frames
-            )
-        }
-        Event::SysEx(e) => {
-            format!(
-                "SysEx [{}] delta_frames={}",
-                e.payload
-                    .iter()
-                    .fold(String::new(), |x, u| x + &*format!(" {:#04X}", u)),
-                e.delta_frames
-            )
-        }
-        Event::Deprecated(e) => {
-            format!(
-                "Deprecated [{}] delta_frames={}",
-                e._reserved
-                    .iter()
-                    .fold(String::new(), |x, u| x + &*format!(" {:#04X}", u)),
-                e.delta_frames
-            )
-        }
-    }
-}
-
-pub fn format_own_event(event: &OwnedEvent) -> String {
-    match event {
-        OwnMidi(e) => format_event(&Midi(*e)),
-        OwnSysEx(e) => {
-            format!(
-                "SysEx [{}] delta_frames={}",
-                e.payload
-                    .iter()
-                    .fold(String::new(), |x, u| x + &*format!(" {:#04X}", u)),
-                e.delta_frames
-            )
-        }
-        OwnDeprecated(e) => format_event(&Deprecated(*e)),
     }
 }
 
@@ -277,7 +226,7 @@ impl NoteOffDelayPlugin {
 
     fn debug_events_in(&mut self, events: &api::Events) {
         for e in events.events() {
-            DebugSocket::send(&*(format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
+            DebugSocket::send(&*(events::format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
         }
     }
 
@@ -399,7 +348,7 @@ impl Plugin for NoteOffDelayPlugin {
                             }
                         ) {
                             let note_off = self.events_queue.remove(delayed_note_off_position);
-                            DebugSocket::send(&*format!("removing delayed note off {}", format_own_event(&note_off.event)));
+                            DebugSocket::send(&*format!("removing delayed note off {}", events::format_own_event(&note_off.event)));
                         }
 
                         self.events_queue.insert_event(AbsoluteTimeEvent {
