@@ -19,6 +19,8 @@ use util::constants::{NOTE_OFF, NOTE_ON};
 use util::debug::DebugSocket;
 use util::make_midi_event;
 use vst::event::Event::Midi;
+use std::fmt::Display;
+use std::fmt;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -234,23 +236,22 @@ impl Plugin for NoteOffDelayPlugin {
     }
 }
 
-type CurrentPlayingNotes = HashMap<[u8; 2], AbsoluteTimeEvent>;
 
-pub trait CurrentPlayingNotesMethods {
-    fn oldest(&self) -> Option<AbsoluteTimeEvent>;
-    fn add_event(&mut self, event: AbsoluteTimeEvent, max_notes: u8) -> Option<AbsoluteTimeEvent>;
-    fn update(&mut self, events: &[AbsoluteTimeEvent], max_notes: u8) -> Vec<AbsoluteTimeEvent>;
+#[derive(Default)]
+struct CurrentPlayingNotes {
+    inner: HashMap<[u8; 2], AbsoluteTimeEvent>
 }
 
-fn format_playing_notes(v : &CurrentPlayingNotes) -> String {
-    v.keys().fold( String::new(), |acc, x| format!("{}, {} {}", acc, x[0], x[1].to_string()))
+impl Display for CurrentPlayingNotes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&*self.inner.keys().fold( String::new(), |acc, x| format!("{}, {} {}", acc, x[0], x[1].to_string())))
+    }
 }
 
 
-impl CurrentPlayingNotesMethods for CurrentPlayingNotes {
+impl CurrentPlayingNotes {
     fn oldest(&self) -> Option<AbsoluteTimeEvent> {
-        let oldest_option = self
-            .values()
+        let oldest_option = self.inner.values()
             .min_by( |a, b| a.play_time_in_samples.cmp(&b.play_time_in_samples) );
 
         if let Some(oldest) = oldest_option {
@@ -261,8 +262,8 @@ impl CurrentPlayingNotesMethods for CurrentPlayingNotes {
     }
 
     fn add_event(&mut self, event: AbsoluteTimeEvent, max_notes: u8) -> Option<AbsoluteTimeEvent> {
-        self.insert([event.event.data[0] & 0x0F, event.event.data[1]], event);
-        if max_notes > 0 && self.len() > max_notes as usize {
+        self.inner.insert([event.event.data[0] & 0x0F, event.event.data[1]], event);
+        if max_notes > 0 && self.inner.len() > max_notes as usize {
             if let Some(event_to_remove) = self.oldest() {
                 let note_off = AbsoluteTimeEvent {
                     event: make_midi_event(
@@ -275,7 +276,7 @@ impl CurrentPlayingNotesMethods for CurrentPlayingNotes {
                     ),
                     play_time_in_samples: event_to_remove.play_time_in_samples,
                 };
-                self.remove_entry(&[event_to_remove.event.data[0] & 0x0F, event_to_remove.event.data[1]]);
+                self.inner.remove_entry(&[event_to_remove.event.data[0] & 0x0F, event_to_remove.event.data[1]]);
                 return Some(note_off);
             }
         }
@@ -288,7 +289,7 @@ impl CurrentPlayingNotesMethods for CurrentPlayingNotes {
         for event in events {
             match event.event.data[0] {
                 x if x > NOTE_OFF && x < NOTE_OFF + 0x10 => {
-                    self.remove(&[event.event.data[0] & 0x0F, event.event.data[1]]);
+                    self.inner.remove(&[event.event.data[0] & 0x0F, event.event.data[1]]);
                 }
                 x if x > NOTE_ON && x < NOTE_ON + 0x10 => {
                     // TODO ideally the corresponding note off should be also eliminated. maybe after refactoring to states
