@@ -62,7 +62,7 @@ pub fn format_event(e: &Event) -> String {
 
 pub trait AbsoluteTimeEventVectorMethods {
     fn insert_event(&mut self, event: AbsoluteTimeEvent);
-    fn merge_notes_off(&mut self, notes_off: AbsoluteTimeEventVector, note_off_delay: usize);
+    fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeEventVector, note_off_delay: usize);
 }
 
 impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
@@ -81,7 +81,7 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
     // and insert notes off with the configured delay while making sure that between a note off
     // initial position and its final position, no note of same pitch and channel is triggered,
     // otherwise we will interrupt this second instance
-    fn merge_notes_off(&mut self, notes_off: AbsoluteTimeEventVector, note_off_delay: usize) {
+    fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeEventVector, note_off_delay: usize) {
         for mut note_off_event in notes_off {
             let mut iterator = self.iter();
             let mut position = 0;
@@ -111,7 +111,7 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
             loop {
                 match current_event {
                     None => {
-                        self.push(note_off_event);
+                        self.push(note_off_event.clone());
                         break;
                     }
                     Some(event_at_position) => {
@@ -131,7 +131,7 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
                             continue;
                         }
 
-                        self.insert(position, note_off_event);
+                        self.insert(position, note_off_event.clone());
                         break;
                     }
                 }
@@ -143,5 +143,212 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeEventVector {
 impl WriteIntoPlaceholder for AbsoluteTimeEvent {
     fn write_into(&self, out: &mut PlaceholderEvent) {
         self.event.write_into(out)
+    }
+}
+
+
+// Mission: redo enums to have midi notes that are specialized:
+// note on, note off, cc, pressure, pitch
+
+pub struct AbsoluteTimeMidiMessage {
+    data: [u8;3],
+    play_time_in_samples: usize,
+}
+
+
+impl AbsoluteTimeMidiMessage {
+    pub fn from(event: &Event, current_time_in_samples: usize) -> AbsoluteTimeMidiMessageType {
+        match event {
+            Midi(e) => {
+                let absolute_time_midi_message = AbsoluteTimeMidiMessage {
+                    data: e.data.clone(),
+                    play_time_in_samples: current_time_in_samples + e.delta_frames as usize
+                };
+
+                // a bit bold but we need different concrete types that happen to all hold the same data
+                match e.data[0] & 0xF0 {
+                    0x80 => {
+                        // note off
+                        AbsoluteTimeMidiMessageType::NoteOffMessage(NoteOff {
+                            absolute_time_midi_message
+                        })
+                    }
+                    0x90 => {
+                        // note on
+                        AbsoluteTimeMidiMessageType::NoteOnMessage(NoteOn {
+                            absolute_time_midi_message
+                        })
+                    }
+                    0xB0 => {
+                        // CC
+                        AbsoluteTimeMidiMessageType::CCMessage(CC {
+                            absolute_time_midi_message
+                        })
+                    }
+                    0xD0 => {
+                        // pressure
+                        AbsoluteTimeMidiMessageType::PressureMessage(Pressure {
+                            absolute_time_midi_message
+                        })
+                    }
+                    0xE0 => {
+                        // pitch bend
+                        AbsoluteTimeMidiMessageType::PitchBendMessage(PitchBend {
+                            absolute_time_midi_message
+                        })
+                    }
+                    0xA0 | 0xC0 | 0xF0 => {
+                        AbsoluteTimeMidiMessageType::UnsupportedChannelMessage(GenericChannelMessage {
+                            absolute_time_midi_message
+                        })
+                    }
+                    _ => { AbsoluteTimeMidiMessageType::Unsupported }
+                }
+            }
+            Event::SysEx(_) => { AbsoluteTimeMidiMessageType::Unsupported }
+            Event::Deprecated(_) => { AbsoluteTimeMidiMessageType::Unsupported }
+        }
+    }
+}
+
+
+pub trait AbsoluteTimeMidiMessageMethods {
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage;
+
+    fn channel(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[0] & 0x0F
+    }
+
+    fn into(&self, current_time_in_samples: usize) -> Event {
+        Event::Midi(MidiEvent {
+            data: self.get_absolute_time_midi_message().data,
+            delta_frames: (self.get_absolute_time_midi_message().play_time_in_samples - current_time_in_samples) as i32,
+            live: true,
+            note_length: None,
+            note_offset: None,
+            detune: 0,
+            note_off_velocity: 0 // TODO to test, certainly redundant
+        })
+    }
+}
+
+pub struct NoteOn {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage,
+}
+
+
+impl AbsoluteTimeMidiMessageMethods for NoteOn {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub struct NoteOff {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage,
+}
+
+impl AbsoluteTimeMidiMessageMethods for NoteOff {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub struct Pressure {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage
+}
+
+impl AbsoluteTimeMidiMessageMethods for Pressure {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub struct PitchBend {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage
+}
+
+impl AbsoluteTimeMidiMessageMethods for PitchBend {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub struct CC {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage
+}
+
+impl AbsoluteTimeMidiMessageMethods for CC {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub struct GenericChannelMessage {
+    absolute_time_midi_message: AbsoluteTimeMidiMessage
+}
+
+impl AbsoluteTimeMidiMessageMethods for GenericChannelMessage {
+    #[inline]
+    fn get_absolute_time_midi_message(&self) -> &AbsoluteTimeMidiMessage {
+        &self.absolute_time_midi_message
+    }
+}
+
+pub enum AbsoluteTimeMidiMessageType {
+    NoteOnMessage(NoteOn),
+    NoteOffMessage(NoteOff),
+    CCMessage(CC),
+    PressureMessage(Pressure),
+    PitchBendMessage(PitchBend),
+    UnsupportedChannelMessage(GenericChannelMessage),
+    Unsupported
+}
+
+trait Note where Self: AbsoluteTimeMidiMessageMethods {
+    fn pitch(&self) -> u8;
+    fn velocity(&self) -> u8;
+
+    fn same_note(&self, note: &dyn Note) -> bool {
+        self.channel() == note.channel() && self.pitch() == note.pitch()
+    }
+}
+
+impl Note for NoteOn {
+    fn pitch(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[1]
+    }
+
+    fn velocity(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[2]
+    }
+}
+
+
+impl CC {
+    pub fn cc(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[1]
+    }
+
+    pub fn value(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[2]
+    }
+}
+
+impl Pressure {
+    pub fn value(&self) -> u8 {
+        self.get_absolute_time_midi_message().data[1]
+    }
+}
+
+impl PitchBend {
+    pub fn semitones(&self) -> f32 {
+        // we assume pitchbend is over -48/+48 semitones
+        // data is stored on 2x 7 bits and represents 96 semitones
+        (((self.get_absolute_time_midi_message().data[2] as i32) << 7) as f32 + self.get_absolute_time_midi_message().data[1] as f32) / 16384. * 96. - 48.
     }
 }

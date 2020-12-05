@@ -189,47 +189,44 @@ impl Plugin for NoteOffDelayPlugin {
 
         for event in events.events() {
             // TODO: minimum time, maximum time ( with delay )
-            match event {
-                Midi(e) => {
-                    match e.data[0] {
-                        x if x >= NOTE_OFF && x < NOTE_OFF + 0x10 => {
-                            notes_off.insert_event(AbsoluteTimeEvent {
-                                event: e,
-                                play_time_in_samples: e.delta_frames as usize
-                                    + self.current_time_in_samples,
-                            })
-                        }
-                        x if x >= NOTE_ON && x < NOTE_ON + 0x10 => {
-                            // drop any note off that was planned already
-                            if let Some(delayed_note_off_position) =
-                                self.events_queue.iter().position(|delayed_note_off| {
-                                    (delayed_note_off.event.data[0] & 0x0F) == (e.data[0] & 0x0F)
-                                        && e.data[1] == delayed_note_off.event.data[1]
-                                        && (delayed_note_off.event.data[0] & 0xF0 == 0x80)
-                                })
-                            {
-                                let note_off = self.events_queue.remove(delayed_note_off_position);
-                                DebugSocket::send(&*format!(
-                                    "removing delayed note off {}",
-                                    format_midi_event(&note_off.event)
-                                ));
-                            }
-
-                            self.events_queue.insert_event(AbsoluteTimeEvent {
-                                event: e,
-                                play_time_in_samples: e.delta_frames as usize
-                                    + self.current_time_in_samples,
-                            })
-                        }
-                        // ignore everything else for now ( CC, expressions, ... )
-                        _ => {}
+            if let Midi(e) = event {
+                match e.data[0] {
+                    x if x >= NOTE_OFF && x < NOTE_OFF + 0x10 => {
+                        notes_off.insert_event(AbsoluteTimeEvent {
+                            event: e,
+                            play_time_in_samples: e.delta_frames as usize
+                                + self.current_time_in_samples,
+                        })
                     }
+                    x if x >= NOTE_ON && x < NOTE_ON + 0x10 => {
+                        // drop any note off that was planned already
+                        if let Some(delayed_note_off_position) =
+                            self.events_queue.iter().position(|delayed_note_off| {
+                                (delayed_note_off.event.data[0] & 0x0F) == (e.data[0] & 0x0F)
+                                    && e.data[1] == delayed_note_off.event.data[1]
+                                    && (delayed_note_off.event.data[0] & 0xF0 == 0x80)
+                            })
+                        {
+                            let note_off = self.events_queue.remove(delayed_note_off_position);
+                            DebugSocket::send(&*format!(
+                                "removing delayed note off {}",
+                                format_midi_event(&note_off.event)
+                            ));
+                        }
+
+                        self.events_queue.insert_event(AbsoluteTimeEvent {
+                            event: e,
+                            play_time_in_samples: e.delta_frames as usize
+                                + self.current_time_in_samples,
+                        })
+                    }
+                    // ignore everything else for now ( CC, expressions, ... )
+                    _ => {}
                 }
-                _ => {}
-            };
+            }
         }
 
-        self.events_queue.merge_notes_off(notes_off, note_off_delay);
+        self.events_queue.merge_notes_off(&mut notes_off, note_off_delay);
     }
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
