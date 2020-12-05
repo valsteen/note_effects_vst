@@ -1,11 +1,12 @@
 use std::sync::Mutex;
 
-use vst::plugin::HostCallback;
+use vst::plugin::HostCallback ;
 use vst::util::ParameterTransfer;
 
 use util::debug::DebugSocket;
-use util::parameter_value_conversion::{byte_to_f32, f32_to_byte};
+use util::parameter_value_conversion::f32_to_byte;
 use util::HostCallbackLock;
+use util::parameters::ParameterConversion;
 
 const PARAMETER_COUNT: usize = 2;
 
@@ -30,34 +31,31 @@ impl From<i32> for Parameter {
     }
 }
 
+
+impl Into<usize> for Parameter {
+    fn into(self) -> usize {
+        self as usize
+    }
+}
+
+
+impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
+    fn get_parameter_transfer(&self) -> &ParameterTransfer {
+        &self.transfer
+    }
+
+    fn get_parameter_count() -> usize {
+        PARAMETER_COUNT
+    }
+}
+
+
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
         return NoteOffDelayPluginParameters {
             host_mutex: Mutex::new(HostCallbackLock { host }),
             ..Default::default()
         };
-    }
-
-    #[inline]
-    pub fn get_byte_parameter(&self, index: Parameter) -> u8 {
-        f32_to_byte(self.transfer.get_parameter(index as usize))
-    }
-
-    #[inline]
-    fn set_byte_parameter(&self, index: Parameter, value: u8) {
-        self.transfer
-            .set_parameter(index as usize, byte_to_f32(value))
-    }
-
-    #[inline]
-    pub fn get_exponential_scale_parameter(&self, index: Parameter) -> Option<f32> {
-        let x = self.transfer.get_parameter(index as usize);
-        const FACTOR: f32 = 20.0;
-        if x == 0.0 {
-            None
-        } else {
-            Some((FACTOR.powf(x) - 1.) * 5. / (FACTOR - 1.0))
-        }
     }
 
     pub fn get_max_notes(&self) -> u8 {
@@ -68,6 +66,7 @@ impl NoteOffDelayPluginParameters {
         self.set_byte_parameter(Parameter::MaxNotes, value * 4)
     }
 }
+
 
 impl Default for NoteOffDelayPluginParameters {
     fn default() -> Self {
@@ -116,7 +115,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     }
 
     fn get_parameter(&self, index: i32) -> f32 {
-        self.transfer.get_parameter(index as usize)
+        self.get_parameter_transfer().get_parameter(index as usize)
     }
 
     fn set_parameter(&self, index: i32, value: f32) {
@@ -139,26 +138,18 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     }
 
     fn get_preset_data(&self) -> Vec<u8> {
-        (0..PARAMETER_COUNT)
-            .map(|i| self.get_byte_parameter(Parameter::from(i as i32)))
-            .collect()
+        self.serialize_state()
     }
 
     fn get_bank_data(&self) -> Vec<u8> {
-        (0..PARAMETER_COUNT)
-            .map(|i| self.get_byte_parameter(Parameter::from(i as i32)))
-            .collect()
+        self.serialize_state()
     }
 
     fn load_preset_data(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(Parameter::from(i as i32), *item);
-        }
+        self.deserialize_state(data)
     }
 
     fn load_bank_data(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(Parameter::from(i as i32), *item);
-        }
+        self.deserialize_state(data)
     }
 }

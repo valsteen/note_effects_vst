@@ -4,6 +4,7 @@ use vst::plugin::HostCallback;
 pub mod constants;
 pub mod debug;
 pub mod parameter_value_conversion;
+pub mod parameters;
 
 #[derive(Default)]
 pub struct HostCallbackLock {

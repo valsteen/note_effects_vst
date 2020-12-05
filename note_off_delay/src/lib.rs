@@ -21,6 +21,7 @@ use util::make_midi_event;
 use vst::event::Event::Midi;
 use std::fmt::Display;
 use std::fmt;
+use util::parameters::ParameterConversion;
 
 plugin_main!(NoteOffDelayPlugin);
 

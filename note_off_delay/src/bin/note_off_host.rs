@@ -4,7 +4,7 @@ use std::env;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use vst::api::Supported;
+use vst::api::Supported ;
 use vst::host::{Host, HostBuffer, PluginLoader};
 use vst::plugin::CanDo;
 use vst::plugin::Plugin;
@@ -104,6 +104,31 @@ fn main() {
     parameters.set_parameter(1, 0.7);
     instance.process(&mut audio_buffer);
     println!("{}", parameters.get_parameter(1));
+
+    parameters.set_parameter(1, 1.0);
+    instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(1));
+
+    parameters.set_parameter(1, 0.0);
+    instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(1));
+
+    parameters.set_parameter(0, 0.0);
+    instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(0));
+
+    parameters.set_parameter(0, 0.0);
+    instance.process(&mut audio_buffer);
+    println!("{}", parameters.get_parameter(0));
+
+    let v = instance.get_parameter_object().get_bank_data();
+    parameters.load_bank_data(&v);
+    let v = parameters.get_preset_data();
+    parameters.load_preset_data(&v);
+
+
+    instance.process(&mut audio_buffer);
+
 
     println!("Closing instance...");
 }
