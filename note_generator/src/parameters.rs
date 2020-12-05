@@ -1,9 +1,10 @@
 use std::sync::Mutex;
 use util::constants::{C0, NOTE_NAMES};
-use util::parameter_value_conversion::{bool_to_f32, byte_to_f32, f32_to_bool, f32_to_byte};
+use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::HostCallbackLock;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
+use util::parameters::ParameterConversion;
 
 pub struct NoteGeneratorPluginParameters {
     pub host: Mutex<HostCallbackLock>,
@@ -38,29 +39,23 @@ impl From<i32> for Parameter {
     }
 }
 
+impl Into<i32> for Parameter {
+    fn into(self) -> i32 {
+        self as i32
+    }
+}
+
+impl ParameterConversion<Parameter> for NoteGeneratorPluginParameters {
+    fn get_parameter_transfer(&self) -> &ParameterTransfer {
+        &self.transfer
+    }
+
+    fn get_parameter_count() -> usize {
+        8
+    }
+}
+
 impl NoteGeneratorPluginParameters {
-    #[inline]
-    fn set_byte_parameter(&self, index: Parameter, value: u8) {
-        self.transfer
-            .set_parameter(index as usize, byte_to_f32(value))
-    }
-
-    #[inline]
-    pub fn get_byte_parameter(&self, index: Parameter) -> u8 {
-        f32_to_byte(self.transfer.get_parameter(index as usize))
-    }
-
-    #[inline]
-    pub fn get_bool_parameter(&self, index: Parameter) -> bool {
-        f32_to_bool(self.transfer.get_parameter(index as usize))
-    }
-
-    #[inline]
-    fn set_bool_parameter(&self, index: Parameter, value: bool) {
-        self.transfer
-            .set_parameter(index as usize, bool_to_f32(value))
-    }
-
     #[inline]
     fn get_displayable_channel(&self) -> u8 {
         // NOT the stored value, but the one used to show on the UI
@@ -93,10 +88,6 @@ impl NoteGeneratorPluginParameters {
     #[inline]
     fn get_trigger(&self) -> bool {
         self.get_bool_parameter(Parameter::Trigger)
-    }
-
-    pub fn copy_parameter(&self, from_index: Parameter, to_index: Parameter) {
-        self.set_parameter(to_index as i32, self.get_parameter(from_index as i32));
     }
 
     pub fn new(host: HostCallback) -> Self {
@@ -225,27 +216,19 @@ impl PluginParameters for NoteGeneratorPluginParameters {
     }
 
     fn get_preset_data(&self) -> Vec<u8> {
-        (0..8)
-            .map(|i| self.get_byte_parameter(Parameter::from(i)))
-            .collect()
+        self.serialize_state()
     }
 
     fn get_bank_data(&self) -> Vec<u8> {
-        (0..8)
-            .map(|i: i32| self.get_byte_parameter(Parameter::from(i)))
-            .collect()
+        self.serialize_state()
     }
 
     fn load_preset_data(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(Parameter::from(i as i32), *item);
-        }
+        self.deserialize_state(data)
     }
 
     fn load_bank_data(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(Parameter::from(i as i32), *item);
-        }
+        self.deserialize_state(data)
     }
 }
 

@@ -32,9 +32,9 @@ impl From<i32> for Parameter {
 }
 
 
-impl Into<usize> for Parameter {
-    fn into(self) -> usize {
-        self as usize
+impl Into<i32> for Parameter {
+    fn into(self) -> i32 {
+        self as i32
     }
 }
 

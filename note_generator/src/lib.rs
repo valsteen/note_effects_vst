@@ -14,6 +14,7 @@ use crate::parameters::{NoteGeneratorPluginParameters, Parameter};
 use util::constants::{CC, NOTE_OFF, NOTE_ON, PITCHWHEEL, PRESSURE, TIMBRECC, ZEROVALUE};
 use util::make_midi_event;
 use util::parameter_value_conversion::f32_to_bool;
+use util::parameters::ParameterConversion;
 
 plugin_main!(NoteGeneratorPlugin);
 
