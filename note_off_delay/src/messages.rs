@@ -3,9 +3,16 @@ use vst::event::{Event, MidiEvent};
 use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use std::fmt::Display;
 use std::fmt;
+use std::slice::IterMut;
 
-//pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>) ;
-pub type AbsoluteTimeMidiMessageVector = Vec<AbsoluteTimeMidiMessage>;
+pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>) ;
+
+impl Default for AbsoluteTimeMidiMessageVector {
+    fn default() -> Self {
+        AbsoluteTimeMidiMessageVector(Default::default())
+    }
+}
+
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
     format!(
@@ -43,15 +50,33 @@ pub fn format_event(e: &Event) -> String {
     this contains midi events that have a play time not relative to the current buffer,
     but to the amount of samples since the plugin was active
 */
+impl AbsoluteTimeMidiMessageVector {
+    pub fn iter(&mut self) -> IterMut<'_, AbsoluteTimeMidiMessage> {
+        self.0.iter_mut()
+    }
 
-pub trait AbsoluteTimeMidiMessageVectorMethods {
-    fn insert_message(&mut self, message: AbsoluteTimeMidiMessage);
-    fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize);
-}
+    pub fn remove(&mut self, i: usize) -> AbsoluteTimeMidiMessage {
+        self.0.remove(i)
+    }
 
-impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
+    pub fn insert(&mut self, i: usize, e: AbsoluteTimeMidiMessage) {
+        self.0.insert(i, e)
+    }
+
+    pub fn push(&mut self, e: AbsoluteTimeMidiMessage) {
+        self.0.push( e)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn get(&self, index: usize) -> &AbsoluteTimeMidiMessage {
+        &self.0[index]
+    }
+
     // called when receiving events ; caller takes care of not pushing note offs in a first phase
-    fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
+    pub fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
         if let Some(insert_point) = self.iter().position(|message_at_position| {
             message.play_time_in_samples < message_at_position.play_time_in_samples
         }) {
@@ -65,13 +90,13 @@ impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
     // and insert notes off with the configured delay while making sure that between a note off
     // initial position and its final position, no note of same pitch and channel is triggered,
     // otherwise we will interrupt this second instance
-    fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize) {
-        for mut note_off_message in notes_off {
+    pub fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize) {
+        for mut note_off_message in notes_off.iter() {
             let mut iterator = self.iter();
             let mut position = 0;
 
             // find original position
-            let mut current_message: Option<&AbsoluteTimeMidiMessage> = loop {
+            let mut current_message: Option<&mut AbsoluteTimeMidiMessage> = loop {
                 match iterator.next() {
                     None => {
                         break None;
@@ -183,19 +208,32 @@ impl AbsoluteTimeMidiMessage {
 
 impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
     fn from(m: &AbsoluteTimeMidiMessage) -> Self {
-        match m.data.0[0] & 0xF0 {
-            0x80 => MidiMessageType::NoteOffMessage(NoteOff::from(m.data)),
-            0x90 => MidiMessageType::NoteOnMessage(NoteOn::from(m.data)),
-            0xB0 => MidiMessageType::CCMessage(CC::from(m.data)),
-            0xD0 => MidiMessageType::PressureMessage(Pressure::from(m.data)),
-            0xE0 => MidiMessageType::PitchBendMessage(PitchBend::from(m.data)),
-            0xA0 | 0xC0 | 0xF0 => MidiMessageType::UnsupportedChannelMessage(GenericChannelMessage::from(m.data)),
+        MidiMessageType::from(m.data)
+    }
+}
+
+impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
+    fn from(m: &mut AbsoluteTimeMidiMessage) -> Self {
+        MidiMessageType::from(m.data)
+    }
+}
+
+
+pub struct RawMessage([u8; 3]);
+
+impl From<RawMessage> for MidiMessageType {
+    fn from(data: RawMessage) -> Self {
+        match data.0[0] & 0xF0 {
+            0x80 => MidiMessageType::NoteOffMessage(NoteOff::from(data)),
+            0x90 => MidiMessageType::NoteOnMessage(NoteOn::from(data)),
+            0xB0 => MidiMessageType::CCMessage(CC::from(data)),
+            0xD0 => MidiMessageType::PressureMessage(Pressure::from(data)),
+            0xE0 => MidiMessageType::PitchBendMessage(PitchBend::from(data)),
+            0xA0 | 0xC0 | 0xF0 => MidiMessageType::UnsupportedChannelMessage(GenericChannelMessage::from(data)),
             _ => MidiMessageType::Unsupported
         }
     }
 }
-
-pub struct RawMessage([u8; 3]);
 
 pub trait ChannelMessage {
     fn get_channel(&self) -> u8 ;

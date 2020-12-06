@@ -12,7 +12,7 @@ use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use crate::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
-use messages::{AbsoluteTimeMidiMessageVector, AbsoluteTimeMidiMessageVectorMethods};
+use messages::AbsoluteTimeMidiMessageVector;
 use parameters::NoteOffDelayPluginParameters;
 use util::debug::DebugSocket;
 use util::parameters::ParameterConversion;
@@ -38,7 +38,7 @@ impl Default for NoteOffDelayPlugin {
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            message_queue: Vec::new(),
+            message_queue: Default::default(),
             current_playing_notes: Default::default(),
         }
     }
@@ -130,7 +130,7 @@ impl Plugin for NoteOffDelayPlugin {
             parameters: Arc::new(parameters),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            message_queue: Vec::new(),
+            message_queue: Default::default(),
             current_playing_notes: CurrentPlayingNotes::default(),
         }
     }
@@ -182,7 +182,7 @@ impl Plugin for NoteOffDelayPlugin {
             _ => 0,
         };
 
-        let mut notes_off = AbsoluteTimeMidiMessageVector::new();
+        let mut notes_off = AbsoluteTimeMidiMessageVector::default();
 
         for event in events.events() {
             // TODO: minimum time, maximum time ( with delay )
@@ -195,7 +195,7 @@ impl Plugin for NoteOffDelayPlugin {
                     }
                     MidiMessageType::NoteOnMessage(_) => {
                         if let Some(delayed_note_off_position) = self.message_queue.iter().position(
-                            |delayed_note_off| midi_message.is_same_note(&delayed_note_off.into())
+                            |delayed_note_off| midi_message.is_same_note(&MidiMessageType::from(delayed_note_off))
                         ) {
                             let note_off = self.message_queue.remove(delayed_note_off_position);
                             DebugSocket::send(&*format!(

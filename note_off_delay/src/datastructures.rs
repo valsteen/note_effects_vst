@@ -128,7 +128,7 @@ impl<'a> Iterator for DelayedMessageConsumer<'a> {
                 return None;
             }
 
-            let delayed_message = &self.messages[0];
+            let delayed_message = self.messages.get(0);
             let play_time_in_samples = delayed_message.play_time_in_samples;
 
             if play_time_in_samples < self.current_time_in_samples {
