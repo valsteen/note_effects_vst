@@ -196,7 +196,7 @@ impl Plugin for NoteOffDelayPlugin {
                     MidiMessageType::NoteOnMessage(m) => {
                         if let Some(delayed_note_off_position) = self.message_queue.iter().position(|delayed_note_off| {
                             match delayed_note_off.into() {
-                                MidiMessageType::NoteOnMessage(n) => m.is_same_note( &MidiMessageType::NoteOnMessage(n)),
+                                MidiMessageType::NoteOffMessage(n) => m.is_same_note( &MidiMessageType::NoteOffMessage(n)),
                                 _ => false
                             }
                         }) {
