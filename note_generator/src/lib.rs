@@ -11,7 +11,7 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 mod parameters;
 
 use crate::parameters::{NoteGeneratorPluginParameters, Parameter};
-use util::constants::{CC, NOTE_OFF, NOTE_ON, PITCHWHEEL, PRESSURE, TIMBRECC, ZEROVALUE};
+use util::constants::{CC, NOTE_OFF, NOTE_ON, PITCHBEND, PRESSURE, TIMBRECC, ZEROVALUE};
 use util::make_midi_event;
 use util::parameter_value_conversion::f32_to_bool;
 use util::parameters::ParameterConversion;
@@ -89,7 +89,7 @@ impl NoteGeneratorPlugin {
     fn get_current_pitchwheel(&self, delta: i32) -> MidiEvent {
         make_midi_event(
             [
-                PITCHWHEEL + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
+                PITCHBEND + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 0,
                 ZEROVALUE,
             ],
