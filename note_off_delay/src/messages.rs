@@ -43,20 +43,20 @@ pub fn format_event(e: &Event) -> String {
     but to the amount of samples since the plugin was active
 */
 
-pub trait AbsoluteTimeEventVectorMethods {
-    fn insert_event(&mut self, event: AbsoluteTimeMidiMessage);
+pub trait AbsoluteTimeMidiMessageVectorMethods {
+    fn insert_message(&mut self, message: AbsoluteTimeMidiMessage);
     fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize);
 }
 
-impl AbsoluteTimeEventVectorMethods for AbsoluteTimeMidiMessageVector {
+impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
     // called when receiving events ; caller takes care of not pushing note offs in a first phase
-    fn insert_event(&mut self, event: AbsoluteTimeMidiMessage) {
-        if let Some(insert_point) = self.iter().position(|event_at_position| {
-            event.play_time_in_samples < event_at_position.play_time_in_samples
+    fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
+        if let Some(insert_point) = self.iter().position(|message_at_position| {
+            message.play_time_in_samples < message_at_position.play_time_in_samples
         }) {
-            self.insert(insert_point, event);
+            self.insert(insert_point, message);
         } else {
-            self.push(event);
+            self.push(message);
         }
     }
 
@@ -65,45 +65,45 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeMidiMessageVector {
     // initial position and its final position, no note of same pitch and channel is triggered,
     // otherwise we will interrupt this second instance
     fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize) {
-        for mut note_off_event in notes_off {
+        for mut note_off_message in notes_off {
             let mut iterator = self.iter();
             let mut position = 0;
 
             // find original position
-            let mut current_event: Option<&AbsoluteTimeMidiMessage> = loop {
+            let mut current_message: Option<&AbsoluteTimeMidiMessage> = loop {
                 match iterator.next() {
                     None => {
                         break None;
                     }
-                    Some(event_at_position) => {
-                        if note_off_event.play_time_in_samples
-                            > event_at_position.play_time_in_samples
+                    Some(message_at_position) => {
+                        if note_off_message.play_time_in_samples
+                            > message_at_position.play_time_in_samples
                         {
                             position += 1;
                             continue;
                         } else {
-                            break Some(event_at_position);
+                            break Some(message_at_position);
                         }
                     }
                 }
             };
 
             // add delay
-            note_off_event.play_time_in_samples += note_off_delay;
+            note_off_message.play_time_in_samples += note_off_delay;
 
             loop {
-                match current_event {
+                match current_message {
                     None => {
-                        self.push(note_off_event.clone());
+                        self.push(note_off_message.clone());
                         break;
                     }
-                    Some(event_at_position) => {
-                        if event_at_position.play_time_in_samples
-                            <= note_off_event.play_time_in_samples
+                    Some(message_at_position) => {
+                        if message_at_position.play_time_in_samples
+                            <= note_off_message.play_time_in_samples
                         {
-                            match MidiMessageType::from(&*note_off_event) {
+                            match MidiMessageType::from(&*note_off_message) {
                                 MidiMessageType::NoteOffMessage(m) => {
-                                    match MidiMessageType::from(event_at_position) {
+                                    match MidiMessageType::from(message_at_position) {
                                         MidiMessageType::NoteOnMessage(n) => {
                                             if m.is_same_note(&MidiMessageType::NoteOnMessage(n)) {
                                                 break
@@ -121,11 +121,11 @@ impl AbsoluteTimeEventVectorMethods for AbsoluteTimeMidiMessageVector {
                             }
 
                             position += 1;
-                            current_event = iterator.next();
+                            current_message = iterator.next();
                             continue;
                         }
 
-                        self.insert(position, note_off_event.clone());
+                        self.insert(position, note_off_message.clone());
                         break;
                     }
                 }

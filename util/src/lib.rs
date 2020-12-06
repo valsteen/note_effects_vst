@@ -11,7 +11,7 @@ pub struct HostCallbackLock {
     pub host: HostCallback,
 }
 
-pub fn make_midi_event(bytes: [u8; 3], delta_frames: i32) -> MidiEvent {
+pub fn make_midi_message(bytes: [u8; 3], delta_frames: i32) -> MidiEvent {
     MidiEvent {
         data: bytes,
         delta_frames,

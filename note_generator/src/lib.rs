@@ -12,7 +12,7 @@ mod parameters;
 
 use crate::parameters::{NoteGeneratorPluginParameters, Parameter};
 use util::constants::{CC, NOTE_OFF, NOTE_ON, PITCHBEND, PRESSURE, TIMBRECC, ZEROVALUE};
-use util::make_midi_event;
+use util::make_midi_message;
 use util::parameter_value_conversion::f32_to_bool;
 use util::parameters::ParameterConversion;
 
@@ -34,7 +34,7 @@ impl NoteGeneratorPlugin {
         velocity_parameter: Parameter,
         delta: i32,
     ) -> MidiEvent {
-        make_midi_event(
+        make_midi_message(
             [
                 event_type + self.parameters.get_byte_parameter(channel_parameter) / 8,
                 self.parameters.get_byte_parameter(pitch_parameter),
@@ -65,7 +65,7 @@ impl NoteGeneratorPlugin {
     }
 
     fn get_current_pressure(&self, delta: i32) -> MidiEvent {
-        make_midi_event(
+        make_midi_message(
             [
                 PRESSURE + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 self.parameters.get_byte_parameter(Parameter::Pressure),
@@ -76,7 +76,7 @@ impl NoteGeneratorPlugin {
     }
 
     fn get_current_timber(&self, delta: i32) -> MidiEvent {
-        make_midi_event(
+        make_midi_message(
             [
                 CC + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 TIMBRECC,
@@ -87,7 +87,7 @@ impl NoteGeneratorPlugin {
     }
 
     fn get_current_pitchwheel(&self, delta: i32) -> MidiEvent {
-        make_midi_event(
+        make_midi_message(
             [
                 PITCHBEND + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
                 0,
