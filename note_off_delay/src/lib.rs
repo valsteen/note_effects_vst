@@ -1,5 +1,6 @@
 mod messages;
 mod parameters;
+mod datastructures;
 
 #[macro_use]
 extern crate vst;
@@ -10,16 +11,14 @@ use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
-use crate::messages::{MidiMessageType, AbsoluteTimeMidiMessage, NoteMessage, NoteOff, ChannelMessage, NoteOn};
+use crate::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
 use messages::{AbsoluteTimeMidiMessageVector, AbsoluteTimeMidiMessageVectorMethods};
 use parameters::NoteOffDelayPluginParameters;
-use std::collections::HashMap;
 use util::debug::DebugSocket;
-use std::fmt::Display;
-use std::fmt;
 use util::parameters::ParameterConversion;
 use crate::parameters::Parameter;
 use std::cell::RefCell;
+use datastructures::{CurrentPlayingNotes, DelayedMessageConsumer};
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -132,7 +131,7 @@ impl Plugin for NoteOffDelayPlugin {
             sample_rate: 44100.0,
             current_time_in_samples: 0,
             message_queue: Vec::new(),
-            current_playing_notes: Default::default(),
+            current_playing_notes: CurrentPlayingNotes::default(),
         }
     }
 
@@ -220,134 +219,5 @@ impl Plugin for NoteOffDelayPlugin {
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
         Arc::clone(&self.parameters) as Arc<dyn vst::plugin::PluginParameters>
-    }
-}
-
-
-#[derive(Default)]
-struct CurrentPlayingNotes {
-    inner: HashMap<[u8; 2], AbsoluteTimeMidiMessage>
-}
-
-impl Display for CurrentPlayingNotes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&*self.inner.keys().fold( String::new(), |acc, x| format!("{}, {} {}", acc, x[0], x[1].to_string())))
-    }
-}
-
-
-impl CurrentPlayingNotes {
-    fn oldest(&self) -> Option<AbsoluteTimeMidiMessage> {
-        let oldest_note = match self.inner.values()
-            .min_by( |a, b| a.play_time_in_samples.cmp(&b.play_time_in_samples) ) {
-            None => return None,
-            Some(n) => n
-        };
-
-        Some(oldest_note.clone())
-    }
-
-    fn add_message(&mut self, message: AbsoluteTimeMidiMessage, max_notes: u8) -> Option<AbsoluteTimeMidiMessage> {
-        let play_time_in_samples = message.play_time_in_samples;
-        let note_on : NoteOn = match MidiMessageType::from(&message) {
-            MidiMessageType::NoteOnMessage(m) => m,
-            _ => { return None }
-        };
-        self.inner.insert([note_on.get_channel(), note_on.get_pitch()], message);
-
-        if max_notes > 0 && self.inner.len() > max_notes as usize {
-            let oldest_note : NoteOn = match self.oldest() {
-                None => return None,
-                Some(m) => match MidiMessageType::from(&m) {
-                    MidiMessageType::NoteOnMessage(m) => m,
-                    _ => return None
-                }
-            };
-
-            self.inner.remove_entry(&[oldest_note.get_channel(), oldest_note.get_pitch()]);
-
-            return Some(AbsoluteTimeMidiMessage {
-                data: NoteOff::from(oldest_note).into(),
-                play_time_in_samples
-            });
-        }
-        None
-    }
-
-    fn update(&mut self, messages: &[AbsoluteTimeMidiMessage], max_notes: u8) -> Vec<AbsoluteTimeMidiMessage> {
-        let mut notes_off: Vec<AbsoluteTimeMidiMessage> = Vec::new();
-
-        for message in messages {
-            match MidiMessageType::from(message) {
-                MidiMessageType::NoteOffMessage(m) => {
-                    self.inner.remove(&[m.get_channel(), m.get_pitch()]);
-                }
-                MidiMessageType::NoteOnMessage(_) => {
-                    // TODO since we're forcefully stopping a note, another redundant note off may come later,
-                    // that might not even happened if the user didn't release the key yet
-                    // we may want to stop redundant notes off to happen by checking if the corresponding note
-                    // is anyway playing according to our internal state
-                    if let Some(note_off) = self.add_message(message.clone(), max_notes) {
-                        notes_off.push(note_off);
-                    }
-                }
-                _ => {}
-            }
-        }
-        notes_off
-    }
-}
-
-struct DelayedMessageConsumer<'a> {
-    samples_in_buffer: usize,
-    messages: &'a mut AbsoluteTimeMidiMessageVector,
-    current_time_in_samples: usize,
-}
-
-impl<'a> Iterator for DelayedMessageConsumer<'a> {
-    type Item = AbsoluteTimeMidiMessage;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.messages.is_empty() {
-                return None;
-            }
-
-            let delayed_message = &self.messages[0];
-            let play_time_in_samples = delayed_message.play_time_in_samples;
-
-            if play_time_in_samples < self.current_time_in_samples {
-                DebugSocket::send(&*format!(
-                    "too late for {} ( current buffer: {} - {}, removing",
-                    delayed_message,
-                    self.current_time_in_samples,
-                    self.current_time_in_samples + self.samples_in_buffer
-                ));
-                self.messages.remove(0);
-                continue;
-            };
-
-            if play_time_in_samples > self.current_time_in_samples + self.samples_in_buffer {
-                // DebugSocket::send(&*format!(
-                //     "too soon for {} ( planned: {} , current buffer: {} - {}",
-                //     &delayed_event.event,
-                //     delayed_event.play_time_in_samples,
-                //     self.current_time_in_samples,
-                //     self.current_time_in_samples + self.samples_in_buffer
-                // ));
-                return None;
-            }
-
-            let delayed_message: AbsoluteTimeMidiMessage = self.messages.remove(0);
-
-            DebugSocket::send(&*format!(
-                "will do {} ( current_time_in_samples={}, play_time_in_samples={} )",
-                delayed_message,
-                self.current_time_in_samples,
-                delayed_message.play_time_in_samples
-            ));
-
-            return Some(delayed_message);
-        }
     }
 }

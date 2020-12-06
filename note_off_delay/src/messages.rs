@@ -4,6 +4,7 @@ use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use std::fmt::Display;
 use std::fmt;
 
+//pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>) ;
 pub type AbsoluteTimeMidiMessageVector = Vec<AbsoluteTimeMidiMessage>;
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
@@ -101,7 +102,7 @@ impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
                         if message_at_position.play_time_in_samples
                             <= note_off_message.play_time_in_samples
                         {
-                            if MidiMessageType::from(&*note_off_message).is_same_note(&message_at_position.into()) {
+                            if MidiMessageType::from(&*note_off_message).is_same_note(&MidiMessageType::from(message_at_position)) {
                                 break;
                             }
                             position += 1;
@@ -122,26 +123,33 @@ impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
 impl Clone for AbsoluteTimeMidiMessage {
     fn clone(&self) -> Self {
         AbsoluteTimeMidiMessage {
-            data: self.data,
+            data: RawMessage(self.data.0),
             play_time_in_samples: self.play_time_in_samples,
         }
     }
 
     fn clone_from(&mut self, source: &Self) {
-        self.data = source.data;
+        self.data = RawMessage(source.data.0);
         self.play_time_in_samples = source.play_time_in_samples
     }
 }
 
 impl Display for AbsoluteTimeMidiMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&*format!("{} [{:#04X} {:#04X} {:#04X}]", self.play_time_in_samples, self.data[0], self.data[1], self.data[2]))
+        f.write_str(&*format!("{} [{:#04X} {:#04X} {:#04X}]", self.play_time_in_samples, self.data.0[0], self.data.0[1], self.data.0[2]))
     }
 }
 
+impl Copy for RawMessage { }
+
+impl Clone for RawMessage {
+    fn clone(&self) -> RawMessage {
+        RawMessage(self.0)
+    }
+}
 
 pub struct AbsoluteTimeMidiMessage {
-    pub data: [u8;3],
+    pub data: RawMessage,
     pub play_time_in_samples: usize,
 }
 
@@ -150,7 +158,7 @@ impl AbsoluteTimeMidiMessage {
         match event {
             Event::Midi(e) => {
                 Some(AbsoluteTimeMidiMessage {
-                    data: e.data.clone(),
+                    data: RawMessage(e.data),
                     play_time_in_samples: current_time_in_samples + e.delta_frames as usize,
                 })
             }
@@ -161,7 +169,7 @@ impl AbsoluteTimeMidiMessage {
 
     pub fn new_midi_event(&self, current_time_in_samples: usize) -> MidiEvent {
         MidiEvent {
-            data: self.data,
+            data: self.data.0,
             delta_frames: (self.play_time_in_samples - current_time_in_samples) as i32,
             live: true,
             note_length: None,
@@ -175,7 +183,7 @@ impl AbsoluteTimeMidiMessage {
 
 impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
     fn from(m: &AbsoluteTimeMidiMessage) -> Self {
-        match m.data[0] & 0xF0 {
+        match m.data.0[0] & 0xF0 {
             0x80 => MidiMessageType::NoteOffMessage(NoteOff::from(m.data)),
             0x90 => MidiMessageType::NoteOnMessage(NoteOn::from(m.data)),
             0xB0 => MidiMessageType::CCMessage(CC::from(m.data)),
@@ -187,7 +195,7 @@ impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
     }
 }
 
-pub type RawMessage = [u8; 3];
+pub struct RawMessage([u8; 3]);
 
 pub trait ChannelMessage {
     fn get_channel(&self) -> u8 ;
@@ -200,8 +208,8 @@ pub struct NoteOn {
 }
 
 impl Into<RawMessage> for NoteOn {
-    fn into(self) -> [u8; 3] {
-        [NOTE_ON + self.channel, self.pitch, self.velocity]
+    fn into(self) -> RawMessage {
+        RawMessage([NOTE_ON + self.channel, self.pitch, self.velocity])
     }
 }
 
@@ -217,22 +225,22 @@ impl NoteMessage for NoteOn {
 
 
 impl From<RawMessage> for NoteOn {
-    fn from(data: [u8; 3]) -> Self {
+    fn from(data: RawMessage) -> Self {
         NoteOn {
-            channel: data[0] & 0x0F,
-            pitch: data[1],
-            velocity: data[2]
+            channel: data.0[0] & 0x0F,
+            pitch: data.0[1],
+            velocity: data.0[2]
         }
     }
 }
 
 
 impl From<RawMessage> for NoteOff {
-    fn from(data: [u8; 3]) -> Self {
+    fn from(data: RawMessage) -> Self {
         NoteOff {
-            channel: data[0] & 0x0F,
-            pitch: data[1],
-            velocity: data[2]
+            channel: data.0[0] & 0x0F,
+            pitch: data.0[1],
+            velocity: data.0[2]
         }
     }
 }
@@ -265,8 +273,8 @@ impl From<NoteOn> for NoteOff {
 }
 
 impl Into<RawMessage> for NoteOff {
-    fn into(self) -> [u8; 3] {
-        [NOTE_OFF + self.channel, self.pitch, self.velocity]
+    fn into(self) -> RawMessage {
+        RawMessage([NOTE_OFF + self.channel, self.pitch, self.velocity])
     }
 }
 
@@ -292,16 +300,16 @@ pub struct Pressure {
 }
 
 impl Into<RawMessage> for Pressure {
-    fn into(self) -> [u8; 3] {
-        [PRESSURE + self.channel, self.value, 0]
+    fn into(self) -> RawMessage {
+        RawMessage([PRESSURE + self.channel, self.value, 0])
     }
 }
 
 impl From<RawMessage> for Pressure {
-    fn from(data: [u8; 3]) -> Self {
+    fn from(data: RawMessage) -> Self {
         Pressure {
-            channel: data[0] & 0x0F,
-            value: data[1]
+            channel: data.0[0] & 0x0F,
+            value: data.0[1]
         }
     }
 }
@@ -325,26 +333,26 @@ impl ChannelMessage for PitchBend {
 }
 
 impl Into<RawMessage> for PitchBend {
-    fn into(self) -> [u8; 3] {
+    fn into(self) -> RawMessage {
         // 96000 millisemitones are expressed over the possible values of 14 bits ( 16384 )
         // which never gets us an exact integer amount of semitones
         let millisemitones = (self.semitones as i32 * 1000) + self.millisemitones as i32 ;
         let value = ((millisemitones + 48000) * 16384) / 96000;
         let msb = value >> 7;
         let lsb = value & 0x7F;
-        [self.channel + PITCHBEND, lsb as u8, msb as u8]
+        RawMessage([self.channel + PITCHBEND, lsb as u8, msb as u8])
     }
 }
 
 impl From<RawMessage> for PitchBend {
-    fn from(data: [u8; 3]) -> Self {
-        let lsb : i32 = data[1] as i32;
-        let msb : i32 = data[2] as i32;
+    fn from(data: RawMessage) -> Self {
+        let lsb : i32 = data.0[1] as i32;
+        let msb : i32 = data.0[2] as i32;
         let value = lsb + (msb << 7);
         let millisemitones = (value * 96000 / 16384) - 48000;
 
         PitchBend {
-            channel: data[0] & 0x0F,
+            channel: data.0[0] & 0x0F,
             semitones: (millisemitones / 1000) as u8,
             millisemitones: (millisemitones % 1000) as u8
         }
@@ -358,17 +366,17 @@ pub struct CC {
 }
 
 impl Into<RawMessage> for CC {
-    fn into(self) -> [u8; 3] {
-        [self.channel, self.cc, self.value]
+    fn into(self) -> RawMessage {
+        RawMessage([self.channel, self.cc, self.value])
     }
 }
 
 impl From<RawMessage> for CC {
-    fn from(data: [u8; 3]) -> Self {
+    fn from(data: RawMessage) -> Self {
         CC {
-            channel: data[0] & 0x0F,
-            cc: data[1],
-            value: data[2]
+            channel: data.0[0] & 0x0F,
+            cc: data.0[1],
+            value: data.0[2]
         }
     }
 }
@@ -379,10 +387,10 @@ impl ChannelMessage for CC {
     }
 }
 
-pub struct GenericChannelMessage([u8; 3]);
+pub struct GenericChannelMessage(RawMessage);
 
 impl From<RawMessage> for GenericChannelMessage {
-    fn from(data: [u8; 3]) -> Self {
+    fn from(data: RawMessage) -> Self {
         GenericChannelMessage(data)
     }
 }
