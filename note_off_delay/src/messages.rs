@@ -101,25 +101,9 @@ impl AbsoluteTimeMidiMessageVectorMethods for AbsoluteTimeMidiMessageVector {
                         if message_at_position.play_time_in_samples
                             <= note_off_message.play_time_in_samples
                         {
-                            match MidiMessageType::from(&*note_off_message) {
-                                MidiMessageType::NoteOffMessage(m) => {
-                                    match MidiMessageType::from(message_at_position) {
-                                        MidiMessageType::NoteOnMessage(n) => {
-                                            if m.is_same_note(&MidiMessageType::NoteOnMessage(n)) {
-                                                break
-                                            }
-                                        }
-                                        MidiMessageType::NoteOffMessage(n) => {
-                                            if m.is_same_note(&MidiMessageType::NoteOffMessage(n)) {
-                                                break
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                _ => {}
+                            if MidiMessageType::from(&*note_off_message).is_same_note(&message_at_position.into()) {
+                                break;
                             }
-
                             position += 1;
                             current_message = iterator.next();
                             continue;
@@ -262,18 +246,6 @@ impl ChannelMessage for NoteOn {
 pub trait NoteMessage where Self: ChannelMessage {
     fn get_pitch(&self) -> u8;
     fn get_velocity(&self) -> u8 ;
-
-    fn is_same_note(&self, note: &MidiMessageType) -> bool {
-        match note {
-            MidiMessageType::NoteOnMessage(note) => {
-                self.get_channel() == note.get_channel() && self.get_pitch() == note.get_pitch()
-            }
-            MidiMessageType::NoteOffMessage(note) => {
-                self.get_channel() == note.get_channel() && self.get_pitch() == note.get_pitch()
-            }
-            _ => false
-        }
-    }
 }
 
 pub struct NoteOff {
@@ -423,4 +395,22 @@ pub enum MidiMessageType {
     PitchBendMessage(PitchBend),
     UnsupportedChannelMessage(GenericChannelMessage),
     Unsupported
+}
+
+impl MidiMessageType {
+    pub fn is_same_note(&self, other: &MidiMessageType) -> bool {
+        let (channel, pitch) = match self {
+            MidiMessageType::NoteOnMessage(m) => (m.channel, m.pitch),
+            MidiMessageType::NoteOffMessage(m) => (m.channel, m.pitch),
+            _ => return false
+        };
+
+        let (channel2, pitch2) = match other {
+            MidiMessageType::NoteOnMessage(m) => (m.channel, m.pitch),
+            MidiMessageType::NoteOffMessage(m) => (m.channel, m.pitch),
+            _ => return false
+        };
+
+        channel == channel2 && pitch == pitch2
+    }
 }

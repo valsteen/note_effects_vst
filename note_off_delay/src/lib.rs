@@ -189,17 +189,15 @@ impl Plugin for NoteOffDelayPlugin {
             // TODO: minimum time, maximum time ( with delay )
 
             if let Some(absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
-                match MidiMessageType::from(&absolute_time_midi_message) {
+                let midi_message = MidiMessageType::from(&absolute_time_midi_message);
+                match midi_message {
                     MidiMessageType::NoteOffMessage(_) => {
                         notes_off.insert_message(absolute_time_midi_message)
                     }
-                    MidiMessageType::NoteOnMessage(m) => {
-                        if let Some(delayed_note_off_position) = self.message_queue.iter().position(|delayed_note_off| {
-                            match delayed_note_off.into() {
-                                MidiMessageType::NoteOffMessage(n) => m.is_same_note( &MidiMessageType::NoteOffMessage(n)),
-                                _ => false
-                            }
-                        }) {
+                    MidiMessageType::NoteOnMessage(_) => {
+                        if let Some(delayed_note_off_position) = self.message_queue.iter().position(
+                            |delayed_note_off| midi_message.is_same_note(&delayed_note_off.into())
+                        ) {
                             let note_off = self.message_queue.remove(delayed_note_off_position);
                             DebugSocket::send(&*format!(
                                 "removing delayed note off {}",
