@@ -192,34 +192,20 @@ impl AbsoluteTimeMidiMessage {
 impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
     fn from(m: &AbsoluteTimeMidiMessage) -> Self {
         match m.data[0] & 0xF0 {
-            0x80 => {
-                MidiMessageType::NoteOffMessage(NoteOff::from(m.data))
-            }
-            0x90 => {
-                MidiMessageType::NoteOnMessage(NoteOn::from(m.data))
-            }
-            0xB0 => {
-                MidiMessageType::CCMessage(CC::from(m.data))
-            }
-            0xD0 => {
-                // pressure
-                MidiMessageType::PressureMessage(Pressure::from(m.data))
-            }
-            0xE0 => {
-                // pitch bend
-                MidiMessageType::PitchBendMessage(PitchBend::from(m.data))
-            }
-            0xA0 | 0xC0 | 0xF0 => {
-                MidiMessageType::UnsupportedChannelMessage(GenericChannelMessage::from(m.data))
-            }
-            _ => { MidiMessageType::Unsupported }
+            0x80 => MidiMessageType::NoteOffMessage(NoteOff::from(m.data)),
+            0x90 => MidiMessageType::NoteOnMessage(NoteOn::from(m.data)),
+            0xB0 => MidiMessageType::CCMessage(CC::from(m.data)),
+            0xD0 => MidiMessageType::PressureMessage(Pressure::from(m.data)),
+            0xE0 => MidiMessageType::PitchBendMessage(PitchBend::from(m.data)),
+            0xA0 | 0xC0 | 0xF0 => MidiMessageType::UnsupportedChannelMessage(GenericChannelMessage::from(m.data)),
+            _ => MidiMessageType::Unsupported
         }
     }
 }
 
 pub type RawMessage = [u8; 3];
 
-pub trait ChannelMessage : where Self : Into<RawMessage> + From<RawMessage> {
+pub trait ChannelMessage {
     fn get_channel(&self) -> u8 ;
 }
 
@@ -421,21 +407,11 @@ impl ChannelMessage for CC {
     }
 }
 
-pub struct GenericChannelMessage {
-    data: [u8; 3]
-}
-
-impl Into<RawMessage> for GenericChannelMessage {
-    fn into(self) -> [u8; 3] {
-        self.data
-    }
-}
+pub struct GenericChannelMessage([u8; 3]);
 
 impl From<RawMessage> for GenericChannelMessage {
     fn from(data: [u8; 3]) -> Self {
-        GenericChannelMessage {
-            data
-        }
+        GenericChannelMessage(data)
     }
 }
 
