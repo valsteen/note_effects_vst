@@ -12,7 +12,7 @@ use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use crate::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
-use messages::AbsoluteTimeMidiMessageVector;
+use datastructures::AbsoluteTimeMidiMessageVector;
 use parameters::NoteOffDelayPluginParameters;
 use util::debug::DebugSocket;
 use util::parameters::ParameterConversion;

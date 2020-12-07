@@ -3,15 +3,6 @@ use vst::event::{Event, MidiEvent};
 use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use std::fmt::Display;
 use std::fmt;
-use std::slice::IterMut;
-
-pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>) ;
-
-impl Default for AbsoluteTimeMidiMessageVector {
-    fn default() -> Self {
-        AbsoluteTimeMidiMessageVector(Default::default())
-    }
-}
 
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
@@ -50,99 +41,6 @@ pub fn format_event(e: &Event) -> String {
     this contains midi events that have a play time not relative to the current buffer,
     but to the amount of samples since the plugin was active
 */
-impl AbsoluteTimeMidiMessageVector {
-    pub fn iter(&mut self) -> IterMut<'_, AbsoluteTimeMidiMessage> {
-        self.0.iter_mut()
-    }
-
-    pub fn remove(&mut self, i: usize) -> AbsoluteTimeMidiMessage {
-        self.0.remove(i)
-    }
-
-    pub fn insert(&mut self, i: usize, e: AbsoluteTimeMidiMessage) {
-        self.0.insert(i, e)
-    }
-
-    pub fn push(&mut self, e: AbsoluteTimeMidiMessage) {
-        self.0.push( e)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn get(&self, index: usize) -> &AbsoluteTimeMidiMessage {
-        &self.0[index]
-    }
-
-    // called when receiving events ; caller takes care of not pushing note offs in a first phase
-    pub fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
-        if let Some(insert_point) = self.iter().position(|message_at_position| {
-            message.play_time_in_samples < message_at_position.play_time_in_samples
-        }) {
-            self.insert(insert_point, message);
-        } else {
-            self.push(message);
-        }
-    }
-
-    // caller sends the notes off after inserting other events, so we know which notes are planned,
-    // and insert notes off with the configured delay while making sure that between a note off
-    // initial position and its final position, no note of same pitch and channel is triggered,
-    // otherwise we will interrupt this second instance
-    pub fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize) {
-        for mut note_off_message in notes_off.iter() {
-            let mut iterator = self.iter();
-            let mut position = 0;
-
-            // find original position
-            let mut current_message: Option<&mut AbsoluteTimeMidiMessage> = loop {
-                match iterator.next() {
-                    None => {
-                        break None;
-                    }
-                    Some(message_at_position) => {
-                        if note_off_message.play_time_in_samples
-                            > message_at_position.play_time_in_samples
-                        {
-                            position += 1;
-                            continue;
-                        } else {
-                            break Some(message_at_position);
-                        }
-                    }
-                }
-            };
-
-            // add delay
-            note_off_message.play_time_in_samples += note_off_delay;
-
-            loop {
-                match current_message {
-                    None => {
-                        self.push(note_off_message.clone());
-                        break;
-                    }
-                    Some(message_at_position) => {
-                        if message_at_position.play_time_in_samples
-                            <= note_off_message.play_time_in_samples
-                        {
-                            if MidiMessageType::from(&*note_off_message).is_same_note(&MidiMessageType::from(message_at_position)) {
-                                break;
-                            }
-                            position += 1;
-                            current_message = iterator.next();
-                            continue;
-                        }
-
-                        self.insert(position, note_off_message.clone());
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
 
 
 impl Clone for AbsoluteTimeMidiMessage {
@@ -165,14 +63,13 @@ impl Display for AbsoluteTimeMidiMessage {
     }
 }
 
-impl Copy for RawMessage { }
-
 impl Clone for RawMessage {
     fn clone(&self) -> RawMessage {
         RawMessage(self.0)
     }
 }
 
+#[derive(Copy)]
 pub struct AbsoluteTimeMidiMessage {
     pub data: RawMessage,
     pub play_time_in_samples: usize,
@@ -218,7 +115,7 @@ impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
     }
 }
 
-
+#[derive(Copy)]
 pub struct RawMessage([u8; 3]);
 
 impl From<RawMessage> for MidiMessageType {

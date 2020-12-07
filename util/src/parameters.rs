@@ -26,7 +26,7 @@ pub trait ParameterConversion<ParameterType>
         if x == 0.0 {
             None
         } else {
-            Some((FACTOR.powf(x) - 1.) * 5. / (FACTOR - 1.0))
+            Some((FACTOR.powf(x) - 1.) * 10. / (FACTOR - 1.0))
         }
     }
 
