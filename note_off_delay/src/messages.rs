@@ -3,6 +3,7 @@ use vst::event::{Event, MidiEvent};
 use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use std::fmt::Display;
 use std::fmt;
+use std::ops::Index;
 
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
@@ -59,7 +60,7 @@ impl Clone for AbsoluteTimeMidiMessage {
 
 impl Display for AbsoluteTimeMidiMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&*format!("{} [{:#04X} {:#04X} {:#04X}]", self.play_time_in_samples, self.data.0[0], self.data.0[1], self.data.0[2]))
+        f.write_str(&*format!("{} [{:#04X} {:#04X} {:#04X}]", self.play_time_in_samples, self.data[0], self.data[1], self.data[2]))
     }
 }
 
@@ -118,9 +119,17 @@ impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
 #[derive(Copy)]
 pub struct RawMessage([u8; 3]);
 
+impl Index<usize> for RawMessage {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
 impl From<RawMessage> for MidiMessageType {
     fn from(data: RawMessage) -> Self {
-        match data.0[0] & 0xF0 {
+        match data[0] & 0xF0 {
             0x80 => MidiMessageType::NoteOffMessage(NoteOff::from(data)),
             0x90 => MidiMessageType::NoteOnMessage(NoteOn::from(data)),
             0xB0 => MidiMessageType::CCMessage(CC::from(data)),
@@ -162,9 +171,9 @@ impl NoteMessage for NoteOn {
 impl From<RawMessage> for NoteOn {
     fn from(data: RawMessage) -> Self {
         NoteOn {
-            channel: data.0[0] & 0x0F,
-            pitch: data.0[1],
-            velocity: data.0[2]
+            channel: data[0] & 0x0F,
+            pitch: data[1],
+            velocity: data[2]
         }
     }
 }
@@ -173,9 +182,9 @@ impl From<RawMessage> for NoteOn {
 impl From<RawMessage> for NoteOff {
     fn from(data: RawMessage) -> Self {
         NoteOff {
-            channel: data.0[0] & 0x0F,
-            pitch: data.0[1],
-            velocity: data.0[2]
+            channel: data[0] & 0x0F,
+            pitch: data[1],
+            velocity: data[2]
         }
     }
 }
@@ -243,8 +252,8 @@ impl Into<RawMessage> for Pressure {
 impl From<RawMessage> for Pressure {
     fn from(data: RawMessage) -> Self {
         Pressure {
-            channel: data.0[0] & 0x0F,
-            value: data.0[1]
+            channel: data[0] & 0x0F,
+            value: data[1]
         }
     }
 }
@@ -281,13 +290,13 @@ impl Into<RawMessage> for PitchBend {
 
 impl From<RawMessage> for PitchBend {
     fn from(data: RawMessage) -> Self {
-        let lsb : i32 = data.0[1] as i32;
-        let msb : i32 = data.0[2] as i32;
+        let lsb : i32 = data[1] as i32;
+        let msb : i32 = data[2] as i32;
         let value = lsb + (msb << 7);
         let millisemitones = (value * 96000 / 16384) - 48000;
 
         PitchBend {
-            channel: data.0[0] & 0x0F,
+            channel: data[0] & 0x0F,
             semitones: (millisemitones / 1000) as u8,
             millisemitones: (millisemitones % 1000) as u8
         }
@@ -309,9 +318,9 @@ impl Into<RawMessage> for CC {
 impl From<RawMessage> for CC {
     fn from(data: RawMessage) -> Self {
         CC {
-            channel: data.0[0] & 0x0F,
-            cc: data.0[1],
-            value: data.0[2]
+            channel: data[0] & 0x0F,
+            cc: data[1],
+            value: data[2]
         }
     }
 }
