@@ -63,18 +63,18 @@ impl CurrentPlayingNotes {
     fn add_message(&mut self, message: AbsoluteTimeMidiMessage, max_notes: u8) -> Option<AbsoluteTimeMidiMessage> {
         let play_time_in_samples = message.play_time_in_samples;
 
-        match MidiMessageType::from(&message) {
+        match (&message).into() {
             MidiMessageType::NoteOnMessage(_) => {},
             _ => { return None }
         };
 
-        self.0.insert(CurrentPlayingNotesIndex::from(&message), message);
+        self.0.insert((&message).into(), message);
 
         if max_notes > 0 && self.0.len() > max_notes as usize {
             let oldest = self.oldest() ;
             let oldest_note : NoteOn = match &oldest {
                 None => return None,
-                Some(m) => match MidiMessageType::from(m) {
+                Some(m) => match m.into() {
                     MidiMessageType::NoteOnMessage(m) => m,
                     _ => return None
                 }

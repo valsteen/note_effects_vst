@@ -4,8 +4,7 @@ use vst::util::ParameterTransfer;
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
 pub trait ParameterConversion<ParameterType>
-    where ParameterType: From<i32>,
-          ParameterType: Into<i32>,
+    where ParameterType: Into<i32> + From<i32>,
           Self: PluginParameters
 {
     #[inline]
@@ -59,13 +58,13 @@ pub trait ParameterConversion<ParameterType>
 
     fn serialize_state(&self) -> Vec<u8> {
         (0..Self::get_parameter_count())
-            .map(|i| self.get_byte_parameter(ParameterType::from(i as i32)))
+            .map(|i | self.get_byte_parameter((i as i32).into()))
             .collect()
     }
 
     fn deserialize_state(&self, data: &[u8]) {
         for (i, item) in data.iter().enumerate() {
-            self.set_byte_parameter(ParameterType::from(i as i32), *item);
+            self.set_byte_parameter((i as i32).into(), *item);
         }
     }
 }

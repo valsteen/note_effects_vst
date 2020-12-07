@@ -78,9 +78,10 @@ impl Default for NoteOffDelayPluginParameters {
     }
 }
 
+
 impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
-        match Parameter::from(index) {
+        match index.into() {
             Parameter::Delay => {
                 if let Some(mut value) = self.get_exponential_scale_parameter(Parameter::Delay) {
                     let mut out = String::new();
@@ -107,7 +108,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
-        match Parameter::from(index) {
+        match index.into() {
             Parameter::Delay => "Delay",
             Parameter::MaxNotes => "Max Notes",
         }
@@ -119,7 +120,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     }
 
     fn set_parameter(&self, index: i32, value: f32) {
-        match Parameter::from(index) {
+        match index.into() {
             Parameter::Delay => {
                 DebugSocket::send(&*format!("Parameter {} set to {}", index, value));
                 let old_value = self.get_parameter(index);

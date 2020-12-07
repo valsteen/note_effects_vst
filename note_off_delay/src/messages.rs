@@ -46,13 +46,13 @@ pub fn format_event(e: &Event) -> String {
 impl Clone for AbsoluteTimeMidiMessage {
     fn clone(&self) -> Self {
         AbsoluteTimeMidiMessage {
-            data: RawMessage(self.data.0),
+            data: self.data,
             play_time_in_samples: self.play_time_in_samples,
         }
     }
 
     fn clone_from(&mut self, source: &Self) {
-        self.data = RawMessage(source.data.0);
+        self.data = source.data;
         self.play_time_in_samples = source.play_time_in_samples
     }
 }
@@ -105,13 +105,13 @@ impl AbsoluteTimeMidiMessage {
 
 impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
     fn from(m: &AbsoluteTimeMidiMessage) -> Self {
-        MidiMessageType::from(m.data)
+        m.data.into()
     }
 }
 
 impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
     fn from(m: &mut AbsoluteTimeMidiMessage) -> Self {
-        MidiMessageType::from(m.data)
+        m.data.into()
     }
 }
 
