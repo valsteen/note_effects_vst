@@ -1,5 +1,5 @@
 use vst::plugin::PluginParameters;
-use crate::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32};
+use crate::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32, u14_to_f32, f32_to_u14};
 use vst::util::ParameterTransfer;
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
@@ -16,6 +16,17 @@ pub trait ParameterConversion<ParameterType>
     fn set_byte_parameter(&self, index: ParameterType, value: u8) {
         self.get_parameter_transfer()
             .set_parameter(index.into() as usize, byte_to_f32(value))
+    }
+
+    #[inline]
+    fn set_u14_parameter(&self, index: ParameterType, value: u16) {
+        self.get_parameter_transfer()
+            .set_parameter(index.into() as usize, u14_to_f32(value))
+    }
+
+    #[inline]
+    fn get_u14_parameter(&self, index: ParameterType) -> u16 {
+        f32_to_u14(self.get_parameter_transfer().get_parameter(index.into() as usize))
     }
 
     #[inline]

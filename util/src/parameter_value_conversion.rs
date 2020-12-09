@@ -22,7 +22,19 @@ pub fn f32_to_byte(value: f32) -> u8 {
     (value * 127.) as u8
 }
 
-// TODO better try to find a type that fits in 32 bytes and store it as binary into the f32,
+#[inline]
+pub fn u14_to_f32(value: u16) -> f32 {
+    // pitchbend goes from 0x0000 ( -48 semitones ) to 0x3FFF ( +48 semitones )
+    value as f32 / (0x3FFF as usize) as f32
+}
+
+#[inline]
+pub fn f32_to_u14(value: f32) -> u16 {
+    (value * (0x3FFF as usize) as f32) as u16
+}
+
+
+// TODO better try to find a type that fits in 32 bits and store it as binary into the f32,
 // disregarding what f32 is suppose to contain
 
 #[inline]

@@ -64,6 +64,21 @@ impl NoteGeneratorPlugin {
         )
     }
 
+    fn get_current_pitchbend(&self, delta: i32) -> MidiEvent {
+        let channel = self.parameters.get_byte_parameter(Parameter::Channel) / 8;
+        let pitchbend_value = self.parameters.get_u14_parameter(Parameter::PitchBend);
+        let msb = pitchbend_value >> 7;
+        let lsb = pitchbend_value & 0x7F;
+        make_midi_message(
+            [
+                channel + PITCHBEND,
+                lsb as u8,
+                msb as u8,
+            ],
+            delta,
+        )
+    }
+
     fn get_current_pressure(&self, delta: i32) -> MidiEvent {
         make_midi_message(
             [
@@ -86,25 +101,15 @@ impl NoteGeneratorPlugin {
         )
     }
 
-    fn get_current_pitchwheel(&self, delta: i32) -> MidiEvent {
-        make_midi_message(
-            [
-                PITCHBEND + self.parameters.get_byte_parameter(Parameter::Channel) / 8,
-                0,
-                ZEROVALUE,
-            ],
-            delta,
-        )
-    }
-
     fn send_midi(&mut self) {
         for (index, value) in self.parameters.transfer.iterate(true) {
-            //let parameter = Parameter::try_from(index).unwrap();
             match Parameter::from(index as i32) {
                 Parameter::Pressure => {
                     self.events.push(self.get_current_pressure(0));
                 }
-
+                Parameter::PitchBend => {
+                    self.events.push(self.get_current_pitchbend(0));
+                }
                 Parameter::Trigger => {
                     if f32_to_bool(value) {
                         self.parameters
@@ -117,7 +122,7 @@ impl NoteGeneratorPlugin {
                         // even though bitwig always inserts zero values for those before the
                         // note, so it always need to be sent right after to obtain the
                         // desired state
-                        self.events.push(self.get_current_pitchwheel(1));
+                        self.events.push(self.get_current_pitchbend(1));
                         self.events.push(self.get_current_timber(1));
                         self.events.push(self.get_current_pressure(1));
                     } else {

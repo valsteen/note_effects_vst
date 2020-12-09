@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use util::constants::{C0, NOTE_NAMES};
-use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
+use util::parameter_value_conversion::{f32_to_bool, f32_to_byte, f32_to_u14};
 use util::HostCallbackLock;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
@@ -18,6 +18,7 @@ pub enum Parameter {
     Velocity,
     NoteOffVelocity,
     Pressure,
+    PitchBend,
     Trigger,
     TriggeredPitch,
     TriggeredChannel,
@@ -31,9 +32,10 @@ impl From<i32> for Parameter {
             2 => Parameter::Velocity,
             3 => Parameter::NoteOffVelocity,
             4 => Parameter::Pressure,
-            5 => Parameter::Trigger,
-            6 => Parameter::TriggeredPitch,
-            7 => Parameter::TriggeredChannel,
+            5 => Parameter::PitchBend,
+            6 => Parameter::Trigger,
+            7 => Parameter::TriggeredPitch,
+            8 => Parameter::TriggeredChannel,
             _ => panic!(format!("No such Parameter {}", i)),
         }
     }
@@ -51,7 +53,7 @@ impl ParameterConversion<Parameter> for NoteGeneratorPluginParameters {
     }
 
     fn get_parameter_count() -> usize {
-        8
+        9
     }
 }
 
@@ -86,6 +88,12 @@ impl NoteGeneratorPluginParameters {
     }
 
     #[inline]
+    fn get_pitchbend_label(&self) -> String {
+        let semitones = self.get_u14_parameter(Parameter::PitchBend);
+        format!("{:.2} semitones", ((semitones as i32 * 96000 / 16383) - 48000) as f32 / 1000.)
+    }
+
+    #[inline]
     fn get_trigger(&self) -> bool {
         self.get_bool_parameter(Parameter::Trigger)
     }
@@ -106,6 +114,7 @@ impl PluginParameters for NoteGeneratorPluginParameters {
             Parameter::Velocity => format!("{}", self.get_velocity()),
             Parameter::NoteOffVelocity => format!("{}", self.get_note_off_velocity()),
             Parameter::Pressure => format!("{}", self.get_pressure()),
+            Parameter::PitchBend => format!("{}", self.get_pitchbend_label()),
             Parameter::Trigger => format!("{}", self.get_trigger()),
             _ => "".to_string(),
         }
@@ -118,6 +127,7 @@ impl PluginParameters for NoteGeneratorPluginParameters {
             Parameter::Velocity => "Velocity",
             Parameter::NoteOffVelocity => "Note off velocity",
             Parameter::Pressure => "Pressure",
+            Parameter::PitchBend => "Pitch Bend",
             Parameter::Trigger => "Trigger generated note",
             _ => "",
         }
@@ -138,6 +148,14 @@ impl PluginParameters for NoteGeneratorPluginParameters {
 
                 if new_value != old_value {
                     self.set_bool_parameter(Parameter::Trigger, new_value)
+                }
+            }
+            Parameter::PitchBend => {
+                let new_value = f32_to_u14(value);
+                let old_value = self.get_u14_parameter(Parameter::PitchBend);
+
+                if new_value != old_value {
+                    self.set_u14_parameter(Parameter::PitchBend, new_value)
                 }
             }
             _ => {
@@ -236,7 +254,7 @@ impl Default for NoteGeneratorPluginParameters {
     fn default() -> Self {
         let parameters = NoteGeneratorPluginParameters {
             host: Default::default(),
-            transfer: ParameterTransfer::new(8),
+            transfer: ParameterTransfer::new(9),
         };
         parameters.set_byte_parameter(Parameter::Pitch, C0 as u8);
         parameters.set_byte_parameter(Parameter::Velocity, 64);
