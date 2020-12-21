@@ -9,10 +9,11 @@ use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 use std::sync::Arc;
 use util::parameters::ParameterConversion;
-use util::messages::{MidiMessageType, RawMessage, ChannelMessage, NoteMessage};
+use util::messages::{MidiMessageType, RawMessage, ChannelMessage, NoteMessage, GenericChannelMessage, NoteOn, NoteOff};
 use parameters::{NoteFanoutParameters, Parameter};
 use std::collections::HashSet;
 use std::hash::{Hasher, Hash};
+use parameters::ChannelDistribution;
 
 
 plugin_main!(NoteFanOut);
@@ -24,7 +25,8 @@ pub struct NoteFanOut {
     current_playing_notes: HashSet<PlayingNote>,
     send_buffer: SendEventBuffer,
     parameters: Arc<NoteFanoutParameters>,
-    current_step: u8
+    current_step: u8,
+    notes_counter: usize
 }
 
 
@@ -38,10 +40,11 @@ impl NoteFanOut {
     }
 }
 
-#[derive(Eq)]
+#[derive(Eq,Clone)]
 struct PlayingNote {
     channel: u8,
-    pitch: u8
+    pitch: u8,
+    mapped_channel: u8
 }
 
 impl PartialEq for PlayingNote {
@@ -63,7 +66,7 @@ impl Plugin for NoteFanOut {
             name: "Note fan-out".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 123458,
-            parameters: 2,
+            parameters: 3,
             category: Category::Effect,
             initial_delay: 0,
             version: 5,
@@ -113,37 +116,84 @@ impl Plugin for NoteFanOut {
 
         for e in events.events() {
             if let Event::Midi(e) = e {
-                if steps > 0 {
-                    let raw_message = RawMessage::from(e.data);
-                    let midi_message = MidiMessageType::from(raw_message);
+                let raw_message = RawMessage::from(e.data);
+                let midi_message = MidiMessageType::from(raw_message);
+                let channel_message = GenericChannelMessage::from(raw_message);
 
-                    match midi_message {
-                        MidiMessageType::NoteOnMessage(midi_message) => {
-                            if selection == self.current_step {
-                                self.events.push(e);
-                                self.current_playing_notes.insert(PlayingNote {
-                                    channel: midi_message.get_channel(),
-                                    pitch: midi_message.get_pitch()
-                                });
+                match midi_message {
+                    MidiMessageType::NoteOnMessage(midi_message) => {
+                        let target_channel = match self.parameters.get_channel_distribution(Parameter::ChannelDistribute) {
+                            ChannelDistribution::Channels(distribution) => {
+                                let target_channel = (self.notes_counter % (distribution as usize)) as u8 + 1;
+                                self.notes_counter += 1;
+                                target_channel
                             }
-                            self.current_step = (self.current_step + 1) % steps ;
-                        }
-                        MidiMessageType::NoteOffMessage(midi_message) => {
-                            let lookup = PlayingNote {
+                            ChannelDistribution::Off => {
+                                channel_message.get_channel()
+                            }
+                        };
+
+                        if steps == 0 || selection == self.current_step {
+                            let raw_message : RawMessage = NoteOn {
+                                channel: target_channel,
+                                pitch: midi_message.pitch,
+                                velocity: midi_message.velocity
+                            }.into();
+
+                            self.events.push(MidiEvent {
+                                data: raw_message.into(),
+                                delta_frames: e.delta_frames,
+                                live: e.live,
+                                note_length: e.note_length,
+                                note_offset: e.note_offset,
+                                detune: e.detune,
+                                note_off_velocity: e.note_off_velocity
+                            });
+
+                            self.current_playing_notes.insert(PlayingNote {
                                 channel: midi_message.get_channel(),
                                 pitch: midi_message.get_pitch(),
-                            };
-                            if self.current_playing_notes.contains(&lookup) {
-                                self.current_playing_notes.remove(&lookup);
+                                mapped_channel: target_channel
+                            });
+                        }
+
+                        if steps > 0 {
+                            self.current_step = (self.current_step + 1) % steps ;
+                        }
+                    }
+                    MidiMessageType::NoteOffMessage(midi_message) => {
+                        let lookup = PlayingNote {
+                            channel: midi_message.get_channel(),
+                            pitch: midi_message.get_pitch(),
+                            mapped_channel: midi_message.get_channel()
+                        };
+
+                        match self.current_playing_notes.take(&lookup) {
+                            Some(note) => {
+                                let raw_message : RawMessage = NoteOff {
+                                    channel: note.mapped_channel,
+                                    pitch: midi_message.pitch,
+                                    velocity: midi_message.velocity
+                                }.into();
+
+                                self.events.push(MidiEvent {
+                                    data: raw_message.into(),
+                                    delta_frames: e.delta_frames,
+                                    live: e.live,
+                                    note_length: e.note_length,
+                                    note_offset: e.note_offset,
+                                    detune: e.detune,
+                                    note_off_velocity: e.note_off_velocity
+                                });
+                            }
+                            None => {
                                 self.events.push(e);
                             }
                         }
-                        _ => {
-                            self.events.push(e);
-                        }
                     }
-                } else {
-                    self.events.push(e);
+                    _ => {
+                        self.events.push(e);
+                    }
                 }
             }
         }
