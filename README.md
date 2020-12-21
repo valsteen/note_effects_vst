@@ -23,12 +23,14 @@ The note off delay can be useful when jamming, making the sound fuller without h
 
 This plugin lets in one note out of N steps, allowing you to build a fan-out device by adding several copies of it in a note FX layer and selecting a different step for each. From there you could for instance have a note effect that only applies to Nth notes, or make a mono instrument polyphonic by having several copies of it ( use an instrument layer in that case ).
 
+Example configuration with a distribution over 4 layers:
 
-![](docs/fanout1.png) ![](docs/fanout2.png) ![](docs/fanout3.png) ![](docs/fanout4.png)
+<img src="docs/fanout1.png" width="200"> <img src="docs/fanout2.png" width="200"> <img src="docs/fanout3.png" width="200"> <img src="docs/fanout4.png" width="200">
 
+Here for instance each 4th note is transformed to be one octave down:
 ![](docs/fanout.gif)
 
-Using channel distribution each note will get a different channel. In order to not interfere with MPE, it starts at channel 2.
+Additionally, using channel distribution each note will get a different channel. In order to not interfere with MPE, it starts at channel 2.
 
 ![](docs/fanoutchannel.gif)
 
