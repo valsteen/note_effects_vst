@@ -125,6 +125,12 @@ impl From<[u8;3]> for RawMessage {
     }
 }
 
+impl Into<[u8;3]> for RawMessage {
+    fn into(self) -> [u8; 3] {
+        self.0
+    }
+}
+
 impl Index<usize> for RawMessage {
     type Output = u8;
 
@@ -152,9 +158,9 @@ pub trait ChannelMessage {
 }
 
 pub struct NoteOn {
-    channel: u8,
-    pitch: u8,
-    velocity: u8
+    pub channel: u8,
+    pub pitch: u8,
+    pub velocity: u8
 }
 
 impl Into<RawMessage> for NoteOn {
@@ -207,9 +213,9 @@ pub trait NoteMessage where Self: ChannelMessage {
 }
 
 pub struct NoteOff {
-    channel: u8,
-    pitch: u8,
-    velocity: u8
+    pub channel: u8,
+    pub pitch: u8,
+    pub velocity: u8
 }
 
 impl From<NoteOn> for NoteOff {
@@ -338,6 +344,12 @@ impl ChannelMessage for CC {
 }
 
 pub struct GenericChannelMessage(RawMessage);
+
+impl ChannelMessage for GenericChannelMessage {
+    fn get_channel(&self) -> u8 {
+        self.0[0] & 0x0F
+    }
+}
 
 impl From<RawMessage> for GenericChannelMessage {
     fn from(data: RawMessage) -> Self {

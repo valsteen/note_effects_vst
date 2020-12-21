@@ -28,6 +28,10 @@ This plugin lets in one note out of N steps, allowing you to build a fan-out dev
 
 ![](docs/fanout.gif)
 
+Using channel distribution each note will get a different channel. In order to not interfere with MPE, it starts at channel 2.
+
+![](docs/fanoutchannel.gif)
+
 Using Bitwig's _note counter_ modulator on a selector FX should just do that, except that the modulation signal is not straightforward to troubleshoot.
 
 ## Note Generator
