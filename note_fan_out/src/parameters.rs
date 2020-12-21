@@ -11,33 +11,30 @@ pub struct NoteFanoutParameters {
 }
 
 #[repr(i32)]
-//#[derive(Copy)]
+#[derive(Copy)]
 pub enum Parameter {
     Steps = 0,
-    Selection,
-    CurrentStep,
+    Selection
 }
 
 
-// TODO remote this workaround if ineffective
-// impl Clone for Parameter {
-//     fn clone(&self) -> Self {
-//         let value = *self as i32;
-//         Parameter::from(value)
-//     }
-//
-//     fn clone_from(&mut self, source: &Self) {
-//         let value = *source as i32;
-//         *self = Parameter::from(value)
-//     }
-// }
+impl Clone for Parameter {
+    fn clone(&self) -> Self {
+        let value = *self as i32;
+        Parameter::from(value)
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        let value = *source as i32;
+        *self = Parameter::from(value)
+    }
+}
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
             0 => Parameter::Steps,
             1 => Parameter::Selection,
-            2 => Parameter::CurrentStep,
             _ => panic!(format!("No such Parameter {}", i)),
         }
     }
@@ -55,7 +52,7 @@ impl ParameterConversion<Parameter> for NoteFanoutParameters {
     }
 
     fn get_parameter_count() -> usize {
-        3
+        2
     }
 }
 
@@ -63,7 +60,7 @@ impl NoteFanoutParameters {
     pub fn new(host: HostCallback) -> Self {
         NoteFanoutParameters {
             host: Mutex::new(HostCallbackLock { host }),
-            transfer: ParameterTransfer::new(3),
+            transfer: ParameterTransfer::new(2),
         }
     }
 }
@@ -80,17 +77,15 @@ impl PluginParameters for NoteFanoutParameters {
                 }
             }
             Parameter::Selection => {
-                format!("{}", self.get_byte_parameter(Parameter::Steps) / 8)
+                format!("{}", self.get_byte_parameter(Parameter::Selection) / 8)
             }
-            _ => "".to_string(),
         }
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
         match Parameter::from(index as i32) {
             Parameter::Steps => "Steps",
-            Parameter::Selection => "Selection",
-            _ => "",
+            Parameter::Selection => "Selection"
         }
         .to_string()
     }
@@ -107,11 +102,8 @@ impl PluginParameters for NoteFanoutParameters {
                 let old_value = self.get_byte_parameter(parameter) / 8;
 
                 if new_value != old_value {
-                    self.set_byte_parameter(Parameter::from(index), new_value)
+                    self.transfer.set_parameter(index as usize, value)
                 }
-            },
-            Parameter::CurrentStep => {
-                self.transfer.set_parameter(index as usize, value)
             }
         }
     }
@@ -137,11 +129,10 @@ impl Default for NoteFanoutParameters {
     fn default() -> Self {
         let parameters = NoteFanoutParameters {
             host: Default::default(),
-            transfer: ParameterTransfer::new(3),
+            transfer: ParameterTransfer::new(2),
         };
         parameters.set_byte_parameter(Parameter::Steps, 0);
         parameters.set_byte_parameter(Parameter::Selection, 0);
-        parameters.set_byte_parameter(Parameter::CurrentStep, 0);
         parameters
     }
 }

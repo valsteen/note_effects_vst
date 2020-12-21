@@ -18,7 +18,16 @@ The note off delay can be useful when jamming, making the sound fuller without h
 
 ![](docs/note_off_delay.png)
 
+## Note fan out
 
+This plugin lets in one note out of N steps, allowing you to build a fan-out device by adding several copies of it in a note FX layer and selecting a different step for each. From there you could for instance have a note effect that only applies to Nth notes, or make a mono instrument polyphonic by having several copies of it ( use an instrument layer in that case ).
+
+
+![](docs/fanout1.png) ![](docs/fanout2.png) ![](docs/fanout3.png) ![](docs/fanout4.png)
+
+![](docs/fanout.gif)
+
+Using Bitwig's _note counter_ modulator on a selector FX should just do that, except that the modulation signal is not straightforward to troubleshoot.
 
 ## Note Generator
 

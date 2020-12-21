@@ -1,6 +1,6 @@
 use vst::event::Event::Midi;
 use vst::event::{Event, MidiEvent};
-use util::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
+use crate::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use std::fmt::Display;
 use std::fmt;
 use std::ops::Index;
@@ -118,6 +118,12 @@ impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
 
 #[derive(Copy)]
 pub struct RawMessage([u8; 3]);
+
+impl From<[u8;3]> for RawMessage {
+    fn from(e: [u8; 3]) -> Self {
+        RawMessage(e)
+    }
+}
 
 impl Index<usize> for RawMessage {
     type Output = u8;

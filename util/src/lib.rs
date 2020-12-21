@@ -5,6 +5,7 @@ pub mod constants;
 pub mod debug;
 pub mod parameter_value_conversion;
 pub mod parameters;
+pub mod messages;
 
 #[derive(Default)]
 pub struct HostCallbackLock {
