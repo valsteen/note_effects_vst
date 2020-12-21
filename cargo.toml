@@ -4,5 +4,6 @@ members = [
     "util",
     "note_generator",
     "note_off_delay",
-    "filter_out_non_note"
+    "filter_out_non_note",
+    "note_fan_out"
 ]

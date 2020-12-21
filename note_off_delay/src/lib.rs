@@ -11,12 +11,12 @@ use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
-use crate::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
+use messages::{MidiMessageType, AbsoluteTimeMidiMessage};
 use datastructures::AbsoluteTimeMidiMessageVector;
 use parameters::NoteOffDelayPluginParameters;
 use util::debug::DebugSocket;
 use util::parameters::ParameterConversion;
-use crate::parameters::Parameter;
+use parameters::Parameter;
 use std::cell::RefCell;
 use datastructures::{CurrentPlayingNotes, DelayedMessageConsumer};
 
