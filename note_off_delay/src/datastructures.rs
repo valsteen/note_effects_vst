@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::messages::{AbsoluteTimeMidiMessage, NoteOn, MidiMessageType, NoteOff, ChannelMessage, NoteMessage};
+use util::messages::{AbsoluteTimeMidiMessage, NoteOn, MidiMessageType, NoteOff, ChannelMessage, NoteMessage};
 use std::fmt::{Display, Formatter};
 use std::fmt;
 use util::debug::DebugSocket;
