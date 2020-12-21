@@ -1,6 +1,7 @@
 # Collection of note effects VSTs
 
 - [Delay notes off, notes limit](#delay-notes-off-and-limiting-amount-of-running-notes)
+- [Note fan-out](#note-fan-out)
 - [Note generator](#note-generator)
 - [Non-notes filter](#non-notes-filter)
 
