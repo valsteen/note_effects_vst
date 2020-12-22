@@ -187,26 +187,34 @@ impl Plugin for NoteOffDelayPlugin {
         for event in events.events() {
             // TODO: minimum time, maximum time ( with delay )
 
-            if let Some(absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
+            if let Some(mut absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
                 let midi_message = MidiMessageType::from(&absolute_time_midi_message);
                 match midi_message {
                     MidiMessageType::NoteOffMessage(_) => {
                         notes_off.insert_message(absolute_time_midi_message)
                     }
+                    MidiMessageType::Unsupported => {}
                     MidiMessageType::NoteOnMessage(_) => {
+                        // find any pending note off that was planned after this note on, and place
+                        // it just before. This is in order to still trigger the note off message.
                         if let Some(delayed_note_off_position) = self.message_queue.iter().position(
                             |delayed_note_off| midi_message.is_same_note(&MidiMessageType::from(delayed_note_off))
                         ) {
-                            let note_off = self.message_queue.remove(delayed_note_off_position);
+                            let mut note_off = self.message_queue.remove(delayed_note_off_position);
+                            note_off.play_time_in_samples = absolute_time_midi_message.play_time_in_samples;
+                            self.message_queue.insert_message(note_off);
                             DebugSocket::send(&*format!(
-                                "removing delayed note off {}",
+                                "delayed note off moved before replacing note on {}",
                                 note_off
                             ));
+
+                            // make sure the note on is after the note off. The daw may randomly immediately stop the note otherwise
+                            // even if the note off is placed before the note on.
+                            absolute_time_midi_message.play_time_in_samples += 1;
                         }
 
-                        self.message_queue.insert_message(absolute_time_midi_message)
+                        self.message_queue.insert_message(absolute_time_midi_message);
                     }
-                    MidiMessageType::Unsupported => {}
                     _ => {
                         self.message_queue.insert_message(absolute_time_midi_message)
                     }

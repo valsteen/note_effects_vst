@@ -181,7 +181,7 @@ impl AbsoluteTimeMidiMessageVector {
     // called when receiving events ; caller takes care of not pushing note offs in a first phase
     pub fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
         if let Some(insert_point) = self.iter().position(|message_at_position| {
-            message.play_time_in_samples < message_at_position.play_time_in_samples
+            message.play_time_in_samples <= message_at_position.play_time_in_samples
         }) {
             self.insert(insert_point, message);
         } else {
