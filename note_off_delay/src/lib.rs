@@ -157,12 +157,16 @@ impl Plugin for NoteOffDelayPlugin {
             ReceiveSysExEvent => Yes,
             MidiSingleNoteTuningChange => No,
             Other(s) => {
-                if s == "MPE" {
-                    Yes
-                } else {
-                    DebugSocket::send(&*s);
-                    No
-                }
+                // Bitwig will mark it as "MPE" by default if 'Yes', but somehow either there is a
+                // bug here, or bitwig ends up being confused about midi events coming out of VSTs,
+                // and some notes end up still running. As it's not really useful in this context,
+                // let the feature off.
+                // if s == "MPE" {
+                //     Yes
+                // } else {
+                //     DebugSocket::send(&*s);
+                //     No
+                // }
             }
         }
     }
