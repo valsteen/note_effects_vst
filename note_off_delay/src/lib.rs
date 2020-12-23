@@ -11,24 +11,24 @@ use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use util::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
-use datastructures::AbsoluteTimeMidiMessageVector;
+use util::datastructures::{AbsoluteTimeMidiMessageVector, DelayedMessageConsumer};
 use parameters::NoteOffDelayPluginParameters;
 use util::debug::DebugSocket;
 use util::parameters::ParameterConversion;
 use parameters::Parameter;
 use std::cell::RefCell;
-use datastructures::{CurrentPlayingNotes, DelayedMessageConsumer};
+use datastructures::CurrentPlayingNotes;
 use util::messages;
 
 plugin_main!(NoteOffDelayPlugin);
 
 pub struct NoteOffDelayPlugin {
-    send_buffer: RefCell<SendEventBuffer>,
-    parameters: Arc<NoteOffDelayPluginParameters>,
-    sample_rate: f32,
+    current_playing_notes: CurrentPlayingNotes,
     current_time_in_samples: usize,
     message_queue: AbsoluteTimeMidiMessageVector,
-    current_playing_notes: CurrentPlayingNotes,
+    parameters: Arc<NoteOffDelayPluginParameters>,
+    sample_rate: f32,
+    send_buffer: RefCell<SendEventBuffer>,
 }
 
 impl Default for NoteOffDelayPlugin {
@@ -51,6 +51,7 @@ impl NoteOffDelayPlugin {
                 samples_in_buffer: samples,
                 messages: &mut self.message_queue,
                 current_time_in_samples: self.current_time_in_samples,
+                drop_late_events: true
             };
 
             let mut messages: Vec<AbsoluteTimeMidiMessage> = message_consumer.collect();
@@ -126,12 +127,12 @@ impl Plugin for NoteOffDelayPlugin {
             build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
         );
         NoteOffDelayPlugin {
-            send_buffer: Default::default(),
-            parameters: Arc::new(parameters),
-            sample_rate: 44100.0,
+            current_playing_notes: CurrentPlayingNotes::default(),
             current_time_in_samples: 0,
             message_queue: Default::default(),
-            current_playing_notes: CurrentPlayingNotes::default(),
+            parameters: Arc::new(parameters),
+            sample_rate: 44100.0,
+            send_buffer: Default::default(),
         }
     }
 
@@ -176,7 +177,7 @@ impl Plugin for NoteOffDelayPlugin {
 
         let note_off_delay = match self
             .parameters
-            .get_exponential_scale_parameter(Parameter::Delay)
+            .get_exponential_scale_parameter(Parameter::Delay, 10., 20.)
         {
             Some(value) => self.seconds_to_samples(value),
             _ => 0,

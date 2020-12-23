@@ -6,6 +6,7 @@ pub mod debug;
 pub mod parameter_value_conversion;
 pub mod parameters;
 pub mod messages;
+pub mod datastructures;
 
 #[derive(Default)]
 pub struct HostCallbackLock {
@@ -22,4 +23,17 @@ pub fn make_midi_message(bytes: [u8; 3], delta_frames: i32) -> MidiEvent {
         detune: 0,
         note_off_velocity: 0,
     }
+}
+
+pub fn duration_display(value: f32) -> String {
+    let mut out = String::new();
+    let mut _value = value;
+    if _value >= 1.0 {
+        out += &*format!("{:.0}s ", value);
+        _value -= value.trunc();
+    }
+    if _value > 0.0 {
+        out += &*format!("{:3.0}ms", value * 1000.0);
+    }
+    out
 }

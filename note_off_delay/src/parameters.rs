@@ -5,7 +5,7 @@ use vst::util::ParameterTransfer;
 
 use util::debug::DebugSocket;
 use util::parameter_value_conversion::f32_to_byte;
-use util::HostCallbackLock;
+use util::{HostCallbackLock, duration_display};
 use util::parameters::ParameterConversion;
 
 const PARAMETER_COUNT: usize = 2;
@@ -83,16 +83,8 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index.into() {
             Parameter::Delay => {
-                if let Some(mut value) = self.get_exponential_scale_parameter(Parameter::Delay) {
-                    let mut out = String::new();
-                    if value >= 1.0 {
-                        out += &*format!("{:.0}s ", value);
-                        value -= value.trunc();
-                    }
-                    if value > 0.0 {
-                        out += &*format!("{:3.0}ms", value * 1000.0);
-                    }
-                    out
+                if let Some(value) = self.get_exponential_scale_parameter(Parameter::Delay, 10., 20.) {
+                    duration_display(value)
                 } else {
                     "Off".to_string()
                 }
