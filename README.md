@@ -4,6 +4,7 @@
 - [Note fan-out](#note-fan-out)
 - [Note generator](#note-generator)
 - [Non-notes filter](#non-notes-filter)
+- [MIDI delay](#midi-delay)
 
 These VST plugins were made possible thanks to https://github.com/RustAudio/vst-rs
 
@@ -54,6 +55,10 @@ Find here a screen recording to get a better idea:
 ## Non-notes filter
 
 Some VSTs may misbehave when receiving unsupported CCs and other midi messages. Using a note filter Bitwig allows to block all notes and just leave other messages, this plugin does the opposite: any midi message that is not in the range 0x80 ( note off channel 1 ) - 0x9F ( note on channel 16 ) is filtered out.
+
+## MIDI delay
+
+Bitwig's timeshift is not modulable, and note delay is limited to 10ms. This plugin just delays all midi signal from <1ms to 1 second.
 
 ## Building the VSTs
 
