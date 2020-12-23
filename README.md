@@ -35,7 +35,7 @@ Additionally, using channel distribution each note will get a different channel.
 
 ![](docs/fanoutchannel.gif)
 
-Using Bitwig's _note counter_ modulator on a selector FX should just do that, except that the modulation signal is not straightforward to troubleshoot.
+Note: it's built-in in Bitwig since 3.2, using "round robin" on a note fx selector
 
 ## Note Generator
 
