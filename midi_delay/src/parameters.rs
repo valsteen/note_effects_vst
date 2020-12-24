@@ -78,7 +78,7 @@ impl PluginParameters for MidiDelayParameters {
         match index.into() {
             Parameter::Delay => {
                 let old_value = self.get_parameter(index);
-                if value != old_value {
+                if (value - old_value).abs() > 0.00001 {
                     self.transfer.set_parameter(index as usize, value)
                 }
             }

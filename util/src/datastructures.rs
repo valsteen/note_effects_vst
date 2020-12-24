@@ -136,7 +136,7 @@ impl AbsoluteTimeMidiMessageVector {
                             continue;
                         }
 
-                        self.insert(position, note_off_message.clone());
+                        self.insert(position, note_off_message);
                         break;
                     }
                 }

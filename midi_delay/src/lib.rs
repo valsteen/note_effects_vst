@@ -112,7 +112,7 @@ impl Plugin for MidiDelay {
         match can_do {
             SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | Bypass => Yes,
             MidiProgramNames | ReceiveSysExEvent | MidiSingleNoteTuningChange => No,
-            Other(s) => Maybe,
+            Other(_) => Maybe,
             _ => Maybe
         }
     }

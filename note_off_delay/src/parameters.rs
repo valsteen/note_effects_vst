@@ -52,10 +52,10 @@ impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
 
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
-        return NoteOffDelayPluginParameters {
+        NoteOffDelayPluginParameters {
             host_mutex: Mutex::new(HostCallbackLock { host }),
             ..Default::default()
-        };
+        }
     }
 
     pub fn get_max_notes(&self) -> u8 {
@@ -70,11 +70,10 @@ impl NoteOffDelayPluginParameters {
 
 impl Default for NoteOffDelayPluginParameters {
     fn default() -> Self {
-        let parameters = NoteOffDelayPluginParameters {
+        NoteOffDelayPluginParameters {
             host_mutex: Default::default(),
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
-        };
-        parameters
+        }
     }
 }
 
@@ -116,7 +115,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
             Parameter::Delay => {
                 DebugSocket::send(&*format!("Parameter {} set to {}", index, value));
                 let old_value = self.get_parameter(index);
-                if value != old_value {
+                if (value - old_value).abs() > 0.0001 {
                     self.transfer.set_parameter(index as usize, value)
                 }
             }

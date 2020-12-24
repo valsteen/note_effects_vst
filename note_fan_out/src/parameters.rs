@@ -50,7 +50,7 @@ impl Into<i32> for Parameter {
 
 impl NoteFanoutParameters {
     pub fn get_channel_distribution(&self, parameter: Parameter) -> ChannelDistribution {
-        return ChannelDistribution::from(self.transfer.get_parameter(parameter as usize))
+        ChannelDistribution::from(self.transfer.get_parameter(parameter as usize))
     }
 }
 

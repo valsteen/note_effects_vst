@@ -114,7 +114,7 @@ impl PluginParameters for NoteGeneratorPluginParameters {
             Parameter::Velocity => format!("{}", self.get_velocity()),
             Parameter::NoteOffVelocity => format!("{}", self.get_note_off_velocity()),
             Parameter::Pressure => format!("{}", self.get_pressure()),
-            Parameter::PitchBend => format!("{}", self.get_pitchbend_label()),
+            Parameter::PitchBend => self.get_pitchbend_label(),
             Parameter::Trigger => format!("{}", self.get_trigger()),
             _ => "".to_string(),
         }

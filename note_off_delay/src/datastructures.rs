@@ -55,7 +55,7 @@ impl CurrentPlayingNotes {
             Some(n) => n
         };
 
-        Some(oldest_note.clone())
+        Some(*oldest_note)
     }
 
     fn add_message(&mut self, message: AbsoluteTimeMidiMessage, max_notes: u8) -> Option<AbsoluteTimeMidiMessage> {
@@ -101,7 +101,7 @@ impl CurrentPlayingNotes {
                     // that might not even happened if the user didn't release the key yet
                     // we may want to stop redundant notes off to happen by checking if the corresponding note
                     // is anyway playing according to our internal state
-                    if let Some(note_off) = self.add_message(message.clone(), max_notes) {
+                    if let Some(note_off) = self.add_message(*message, max_notes) {
                         notes_off.push(note_off);
                     }
                 }
