@@ -7,11 +7,14 @@ use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 use std::sync::Arc;
-use parameters::{MidiDelayParameters, Parameter};
 use std::cell::RefCell;
-use util::datastructures::{AbsoluteTimeMidiMessageVector, DelayedMessageConsumer};
-use util::messages::{AbsoluteTimeMidiMessage, MidiMessageType};
+
+use parameters::{MidiDelayParameters, Parameter};
 use util::parameters::ParameterConversion;
+use util::midi_message_type::MidiMessageType;
+use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
+use util::delayed_message_consumer::DelayedMessageConsumer;
+use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 
 
 plugin_main!(MidiDelay);

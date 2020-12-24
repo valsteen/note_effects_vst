@@ -1,11 +1,14 @@
 use std::collections::HashMap;
-use util::messages::{AbsoluteTimeMidiMessage, NoteOn, MidiMessageType, NoteOff, ChannelMessage, NoteMessage};
 use std::fmt::{Display, Formatter};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
+use util::messages::{NoteOff, NoteOn, ChannelMessage, NoteMessage};
+use util::midi_message_type::MidiMessageType;
 
-#[derive(Eq)]
+
+#[derive(Eq, Clone, Copy)]
 pub struct CurrentPlayingNotesIndex([u8; 2]);
 
 impl From<&AbsoluteTimeMidiMessage> for CurrentPlayingNotesIndex {
@@ -58,6 +61,11 @@ impl CurrentPlayingNotes {
         Some(*oldest_note)
     }
 
+    // TODO
+    fn get(&self, index: &CurrentPlayingNotesIndex) -> Option<&AbsoluteTimeMidiMessage> {
+        self.0.get(index)
+    }
+
     fn add_message(&mut self, message: AbsoluteTimeMidiMessage, max_notes: u8) -> Option<AbsoluteTimeMidiMessage> {
         let play_time_in_samples = message.play_time_in_samples;
 
@@ -78,12 +86,16 @@ impl CurrentPlayingNotes {
                 }
             };
 
+            // TODO don't remove the entry here. When sending the corresponding note off,
+            // we remove the playing note from currentplayingnotes by using the ID
             self.0.remove_entry(&(CurrentPlayingNotesIndex::from(&oldest.unwrap())));
 
-            return Some(AbsoluteTimeMidiMessage {
-                data: NoteOff::from(oldest_note).into(),
-                play_time_in_samples
-            });
+            // TODO here use the ID of the note on we will remove
+            // then just skip sending it
+            return Some(AbsoluteTimeMidiMessage::new(
+                NoteOff::from(oldest_note).into(),
+                play_time_in_samples,
+            ));
         }
         None
     }
@@ -94,6 +106,8 @@ impl CurrentPlayingNotes {
         for message in messages {
             match MidiMessageType::from(message) {
                 MidiMessageType::NoteOffMessage(m) => {
+                    // find corresponding note on, create this note off with the same ID, remove from
+                    // playing notes when sending
                     self.0.remove(&CurrentPlayingNotesIndex([m.get_channel(), m.get_pitch()]));
                 }
                 MidiMessageType::NoteOnMessage(_) => {

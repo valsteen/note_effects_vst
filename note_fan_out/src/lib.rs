@@ -3,18 +3,20 @@ mod parameters;
 #[macro_use]
 extern crate vst;
 
+use std::collections::HashSet;
+use std::hash::{Hasher, Hash};
+use std::sync::Arc;
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-use std::sync::Arc;
-use util::parameters::ParameterConversion;
-use util::messages::{MidiMessageType, RawMessage, ChannelMessage, NoteMessage, GenericChannelMessage, NoteOn, NoteOff};
-use parameters::{NoteFanoutParameters, Parameter};
-use std::collections::HashSet;
-use std::hash::{Hasher, Hash};
-use parameters::ChannelDistribution;
 
+use parameters::ChannelDistribution;
+use parameters::{NoteFanoutParameters, Parameter};
+use util::messages::{ChannelMessage, GenericChannelMessage, NoteMessage, NoteOff, NoteOn};
+use util::midi_message_type::MidiMessageType;
+use util::parameters::ParameterConversion;
+use util::raw_message::RawMessage;
 
 plugin_main!(NoteFanOut);
 
@@ -110,9 +112,7 @@ impl Plugin for NoteFanOut {
 
         for e in events.events() {
             if let Event::Midi(e) = e {
-                let raw_message = RawMessage::from(e.data);
-                let midi_message = MidiMessageType::from(raw_message);
-                let channel_message = GenericChannelMessage::from(raw_message);
+                let midi_message = MidiMessageType::from(&e.data);
 
                 match midi_message {
                     MidiMessageType::NoteOnMessage(midi_message) => {
@@ -123,7 +123,7 @@ impl Plugin for NoteFanOut {
                                 target_channel
                             }
                             ChannelDistribution::Off => {
-                                channel_message.get_channel()
+                                GenericChannelMessage::from(&e.data).get_channel()
                             }
                         };
 

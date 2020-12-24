@@ -1,74 +1,27 @@
-use crate::messages::{AbsoluteTimeMidiMessage, MidiMessageType};
-use crate::debug::DebugSocket;
 use std::ops::{Deref, DerefMut};
 
-pub struct DelayedMessageConsumer<'a> {
-    pub samples_in_buffer: usize,
-    pub messages: &'a mut AbsoluteTimeMidiMessageVector,
-    pub current_time_in_samples: usize,
-    pub drop_late_events: bool
-}
+use super::midi_message_type::MidiMessageType;
+use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 
-impl<'a> Iterator for DelayedMessageConsumer<'a> {
-    type Item = AbsoluteTimeMidiMessage;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.messages.is_empty() {
-                return None;
-            }
-
-            let delayed_message = &self.messages[0];
-
-            if delayed_message.play_time_in_samples < self.current_time_in_samples {
-                // can happen if the delay time is modulated
-                if self.drop_late_events {
-                    DebugSocket::send(&*format!(
-                        "too late for {} ( current buffer: {} - {}, removing",
-                        delayed_message,
-                        self.current_time_in_samples,
-                        self.current_time_in_samples + self.samples_in_buffer
-                    ));
-                    self.messages.remove(0);
-                    continue;
-                } else {
-                    // immediately send it
-                    let mut delayed_message = self.messages.remove(0);
-                    delayed_message.play_time_in_samples = self.current_time_in_samples;
-                    return Some(delayed_message);
-                }
-            };
-
-            if delayed_message.play_time_in_samples > self.current_time_in_samples + self.samples_in_buffer {
-                // DebugSocket::send(&*format!(
-                //     "too soon for {} ( planned: {} , current buffer: {} - {}",
-                //     &delayed_event.event,
-                //     delayed_event.play_time_in_samples,
-                //     self.current_time_in_samples,
-                //     self.current_time_in_samples + self.samples_in_buffer
-                // ));
-                return None;
-            }
-
-            let delayed_message: AbsoluteTimeMidiMessage = self.messages.remove(0);
-
-            DebugSocket::send(&*format!(
-                "will do {} ( current_time_in_samples={}, play_time_in_samples={} )",
-                delayed_message,
-                self.current_time_in_samples,
-                delayed_message.play_time_in_samples
-            ));
-
-            return Some(delayed_message);
-        }
-    }
-}
-
-pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>) ;
+pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>);
 
 impl Default for AbsoluteTimeMidiMessageVector {
     fn default() -> Self {
         AbsoluteTimeMidiMessageVector(Default::default())
+    }
+}
+
+impl Deref for AbsoluteTimeMidiMessageVector {
+    type Target = Vec<AbsoluteTimeMidiMessage>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for AbsoluteTimeMidiMessageVector {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -142,19 +95,5 @@ impl AbsoluteTimeMidiMessageVector {
                 }
             }
         }
-    }
-}
-
-impl Deref for AbsoluteTimeMidiMessageVector {
-    type Target = Vec<AbsoluteTimeMidiMessage>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for AbsoluteTimeMidiMessageVector {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }

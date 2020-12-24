@@ -1,3 +1,5 @@
+extern crate global_counter;
+
 use vst::event::MidiEvent;
 use vst::plugin::HostCallback;
 
@@ -6,7 +8,11 @@ pub mod debug;
 pub mod parameter_value_conversion;
 pub mod parameters;
 pub mod messages;
-pub mod datastructures;
+pub mod absolute_time_midi_message;
+pub mod midi_message_type;
+pub mod raw_message;
+pub mod absolute_time_midi_message_vector;
+pub mod delayed_message_consumer;
 
 #[derive(Default)]
 pub struct HostCallbackLock {

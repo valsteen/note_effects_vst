@@ -9,16 +9,18 @@ use std::sync::Arc;
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-
-use util::messages::{MidiMessageType, AbsoluteTimeMidiMessage};
-use util::datastructures::{AbsoluteTimeMidiMessageVector, DelayedMessageConsumer};
-use parameters::NoteOffDelayPluginParameters;
-use util::debug::DebugSocket;
-use util::parameters::ParameterConversion;
-use parameters::Parameter;
 use std::cell::RefCell;
+
 use datastructures::CurrentPlayingNotes;
-use util::messages;
+use parameters::NoteOffDelayPluginParameters;
+use parameters::Parameter;
+use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
+use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
+use util::debug::DebugSocket;
+use util::delayed_message_consumer::DelayedMessageConsumer;
+use util::messages::format_event;
+use util::midi_message_type::MidiMessageType;
+use util::parameters::ParameterConversion;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -55,6 +57,13 @@ impl NoteOffDelayPlugin {
             };
 
             let mut messages: Vec<AbsoluteTimeMidiMessage> = message_consumer.collect();
+
+            // TODO decouple limiting and updating playing notes. first we generate the note off necessary to cut notes that
+            // exceeds the limit. this will generate duplicate note off messages with the same ID
+            // then right when doing send_events, only then we update current playing notes, skipping
+            // note off if the corresponding ID is not found in current playing notes. this sorts out the
+            // duplicate note off issue, two same ID can live there as long as we know we skip them right at sending.
+
             let notes_off = self
                 .current_playing_notes
                 .update(&messages, self.parameters.get_max_notes());
@@ -80,7 +89,7 @@ impl NoteOffDelayPlugin {
     fn debug_events_in(&mut self, events: &api::Events) {
         for e in events.events() {
             DebugSocket::send(
-                &*(messages::format_event(&e)
+                &*(format_event(&e)
                     + &*format!(" current time={}", self.current_time_in_samples)),
             );
         }
@@ -193,14 +202,23 @@ impl Plugin for NoteOffDelayPlugin {
         for event in events.events() {
             // TODO: minimum time, maximum time ( with delay )
 
+            // TODO we can't just create from midi message anymore, first match on type, then create AbsoluteTimeMidiMessage with
+            // a specific ID when it's a note off
+
+
             if let Some(mut absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
                 let midi_message = MidiMessageType::from(&absolute_time_midi_message);
                 match midi_message {
                     MidiMessageType::NoteOffMessage(_) => {
+                        // TODO find the corresponding note on ID in current playing notes and assign it
+                        // maybe using a constructor that uses the original note on
                         notes_off.insert_message(absolute_time_midi_message)
                     }
                     MidiMessageType::Unsupported => {}
                     MidiMessageType::NoteOnMessage(_) => {
+                        // TODO find the ID of the note on this one replaces, get the corresponding note off by id,
+                        // replace it at the absolute time location of this new note on, this note on then receives time+1
+
                         // find any pending note off that was planned after this note on, and place
                         // it just before. This is in order to still trigger the note off message.
                         if let Some(delayed_note_off_position) = self.message_queue.iter().position(
