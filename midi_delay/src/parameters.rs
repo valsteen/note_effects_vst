@@ -55,7 +55,8 @@ impl PluginParameters for MidiDelayParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index.into() {
             Parameter::Delay => {
-                if let Some(value) = self.get_exponential_scale_parameter(Parameter::Delay, 1., 80.) {
+                let value = self.get_exponential_scale_parameter(Parameter::Delay, 1., 80.);
+                if value > 0. {
                     duration_display(value)
                 } else {
                     "Off".to_string()

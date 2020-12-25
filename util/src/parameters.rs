@@ -1,6 +1,7 @@
 use vst::plugin::PluginParameters;
-use crate::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32, u14_to_f32, f32_to_u14};
 use vst::util::ParameterTransfer;
+
+use super::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32, u14_to_f32, f32_to_u14};
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
 pub trait ParameterConversion<ParameterType>
@@ -30,13 +31,9 @@ pub trait ParameterConversion<ParameterType>
     }
 
     #[inline]
-    fn get_exponential_scale_parameter(&self, index: ParameterType, max: f32, factor: f32) -> Option<f32> {
+    fn get_exponential_scale_parameter(&self, index: ParameterType, max: f32, factor: f32) -> f32 {
         let x = self.get_parameter_transfer().get_parameter(index.into() as usize);
-        if x == 0.0 {
-            None
-        } else {
-            Some((factor.powf(x) - 1.) * max / (factor - 1.0))
-        }
+        (factor.powf(x) - 1.) * max / (factor - 1.0)
     }
 
     #[inline]
