@@ -82,7 +82,9 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index.into() {
             Parameter::Delay => {
-                if let Some(value) = self.get_exponential_scale_parameter(Parameter::Delay, 10., 20.) {
+                let value = self.get_exponential_scale_parameter(Parameter::Delay, 10., 20.);
+
+                if value > 0.0 {
                     duration_display(value)
                 } else {
                     "Off".to_string()

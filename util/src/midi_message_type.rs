@@ -54,15 +54,8 @@ impl From<&[u8; 3]> for MidiMessageType {
     }
 }
 
-
-impl From<&AbsoluteTimeMidiMessage> for MidiMessageType {
-    fn from(m: &AbsoluteTimeMidiMessage) -> Self {
-        m.data.into()
-    }
-}
-
-impl From<&mut AbsoluteTimeMidiMessage> for MidiMessageType {
-    fn from(m: &mut AbsoluteTimeMidiMessage) -> Self {
+impl From<AbsoluteTimeMidiMessage> for MidiMessageType {
+    fn from(m: AbsoluteTimeMidiMessage) -> Self {
         m.data.into()
     }
 }

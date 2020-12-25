@@ -1,14 +1,12 @@
 use core::clone::Clone;
 use core::fmt::Display;
 use core::fmt;
-use core::option::Option::{Some, None};
-use core::option::Option;
-use global_counter::primitive::exact::CounterUsize;
-use vst::event::{Event, MidiEvent};
+//use core::option::Option::{Some, None};
+//use vst::event::{Event, MidiEvent};
 
 use super::raw_message::RawMessage;
-
-static NOTE_SEQUENCE_ID: CounterUsize = CounterUsize::new(0);
+use vst::event::MidiEvent;
+use std::cmp::min;
 
 #[derive(Copy)]
 pub struct AbsoluteTimeMidiMessage {
@@ -19,31 +17,10 @@ pub struct AbsoluteTimeMidiMessage {
 }
 
 impl AbsoluteTimeMidiMessage {
-    pub fn new(raw_message: RawMessage, play_time_in_samples: usize) -> Self {
-        AbsoluteTimeMidiMessage {
-            id: NOTE_SEQUENCE_ID.inc(),
-            data: raw_message,
-            play_time_in_samples,
-        }
-    }
-
-    pub fn from_event(event: &Event, current_time_in_samples: usize) -> Option<AbsoluteTimeMidiMessage> {
-        match event {
-            Event::Midi(e) => {
-                Some(AbsoluteTimeMidiMessage::new(
-                    e.data.into(),
-                    current_time_in_samples + e.delta_frames as usize,
-                ))
-            }
-            Event::SysEx(_) => { None }
-            Event::Deprecated(_) => { None }
-        }
-    }
-
     pub fn new_midi_event(&self, current_time_in_samples: usize) -> MidiEvent {
         MidiEvent {
             data: self.data.into(),
-            delta_frames: (self.play_time_in_samples - current_time_in_samples) as i32,
+            delta_frames: min(0, self.play_time_in_samples - current_time_in_samples) as i32,
             live: true,
             note_length: None,
             note_offset: None,

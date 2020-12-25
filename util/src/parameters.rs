@@ -31,13 +31,9 @@ pub trait ParameterConversion<ParameterType>
     }
 
     #[inline]
-    fn get_exponential_scale_parameter(&self, index: ParameterType, max: f32, factor: f32) -> Option<f32> {
+    fn get_exponential_scale_parameter(&self, index: ParameterType, max: f32, factor: f32) -> f32 {
         let x = self.get_parameter_transfer().get_parameter(index.into() as usize);
-        if x == 0.0 {
-            None
-        } else {
-            Some((factor.powf(x) - 1.) * max / (factor - 1.0))
-        }
+        (factor.powf(x) - 1.) * max / (factor - 1.0)
     }
 
     #[inline]

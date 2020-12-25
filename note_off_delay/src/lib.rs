@@ -1,23 +1,21 @@
 mod parameters;
-mod datastructures;
 
 #[macro_use]
 extern crate vst;
 
+use std::cell::RefCell;
 use std::sync::Arc;
 
-use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-use std::cell::RefCell;
+use vst::event::Event;
+use vst::api::Events;
 
-use datastructures::CurrentPlayingNotes;
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
-use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use util::debug::DebugSocket;
-use util::delayed_message_consumer::DelayedMessageConsumer;
+use util::delayed_message_consumer::process_scheduled_events;
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
@@ -25,7 +23,6 @@ use util::parameters::ParameterConversion;
 plugin_main!(NoteOffDelayPlugin);
 
 pub struct NoteOffDelayPlugin {
-    current_playing_notes: CurrentPlayingNotes,
     current_time_in_samples: usize,
     message_queue: AbsoluteTimeMidiMessageVector,
     parameters: Arc<NoteOffDelayPluginParameters>,
@@ -40,8 +37,7 @@ impl Default for NoteOffDelayPlugin {
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            message_queue: Default::default(),
-            current_playing_notes: Default::default(),
+            message_queue: Default::default()
         }
     }
 }
@@ -49,31 +45,15 @@ impl Default for NoteOffDelayPlugin {
 impl NoteOffDelayPlugin {
     fn send_events(&mut self, samples: usize) {
         if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
-            let message_consumer: DelayedMessageConsumer = DelayedMessageConsumer {
-                samples_in_buffer: samples,
-                messages: &mut self.message_queue,
-                current_time_in_samples: self.current_time_in_samples,
-                drop_late_events: true
-            };
+            let (next_message_queue, events) = process_scheduled_events(
+                samples,
+                self.current_time_in_samples,
+                &self.message_queue,
+                self.parameters.get_max_notes(),
+            );
 
-            let mut messages: Vec<AbsoluteTimeMidiMessage> = message_consumer.collect();
-
-            // TODO decouple limiting and updating playing notes. first we generate the note off necessary to cut notes that
-            // exceeds the limit. this will generate duplicate note off messages with the same ID
-            // then right when doing send_events, only then we update current playing notes, skipping
-            // note off if the corresponding ID is not found in current playing notes. this sorts out the
-            // duplicate note off issue, two same ID can live there as long as we know we skip them right at sending.
-
-            let notes_off = self
-                .current_playing_notes
-                .update(&messages, self.parameters.get_max_notes());
-
-            for note_off in notes_off {
-                messages.push(note_off);
-            }
-
-            self.send_buffer.borrow_mut()
-                .send_events(messages.iter().map(|e| e.new_midi_event(self.current_time_in_samples) ), &mut host_callback_lock.host);
+            self.message_queue = next_message_queue;
+            self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
         }
     }
 
@@ -86,7 +66,7 @@ impl NoteOffDelayPlugin {
         (seconds * self.sample_rate) as usize
     }
 
-    fn debug_events_in(&mut self, events: &api::Events) {
+    fn debug_events_in(&mut self, events: &Events) {
         for e in events.events() {
             DebugSocket::send(
                 &*(format_event(&e)
@@ -136,7 +116,6 @@ impl Plugin for NoteOffDelayPlugin {
             build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
         );
         NoteOffDelayPlugin {
-            current_playing_notes: CurrentPlayingNotes::default(),
             current_time_in_samples: 0,
             message_queue: Default::default(),
             parameters: Arc::new(parameters),
@@ -186,67 +165,38 @@ impl Plugin for NoteOffDelayPlugin {
         self.increase_time_in_samples(audio_buffer.samples());
     }
 
-    fn process_events(&mut self, events: &api::Events) {
+    fn process_events(&mut self, events: &Events) {
         self.debug_events_in(events);
 
-        let note_off_delay = match self
-            .parameters
-            .get_exponential_scale_parameter(Parameter::Delay, 10., 20.)
-        {
-            Some(value) => self.seconds_to_samples(value),
-            _ => 0,
-        };
-
-        let mut notes_off = AbsoluteTimeMidiMessageVector::default();
+        let note_off_delay = self.seconds_to_samples(self.parameters
+            .get_exponential_scale_parameter(Parameter::Delay, 10., 20.));
 
         for event in events.events() {
+            let midi_event = if let Event::Midi(midi_event) = event {
+                midi_event
+            } else {
+                continue
+            };
+
             // TODO: minimum time, maximum time ( with delay )
 
-            // TODO we can't just create from midi message anymore, first match on type, then create AbsoluteTimeMidiMessage with
-            // a specific ID when it's a note off
-
-
-            if let Some(mut absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
-                let midi_message = MidiMessageType::from(&absolute_time_midi_message);
-                match midi_message {
-                    MidiMessageType::NoteOffMessage(_) => {
-                        // TODO find the corresponding note on ID in current playing notes and assign it
-                        // maybe using a constructor that uses the original note on
-                        notes_off.insert_message(absolute_time_midi_message)
-                    }
-                    MidiMessageType::Unsupported => {}
-                    MidiMessageType::NoteOnMessage(_) => {
-                        // TODO find the ID of the note on this one replaces, get the corresponding note off by id,
-                        // replace it at the absolute time location of this new note on, this note on then receives time+1
-
-                        // find any pending note off that was planned after this note on, and place
-                        // it just before. This is in order to still trigger the note off message.
-                        if let Some(delayed_note_off_position) = self.message_queue.iter().position(
-                            |delayed_note_off| midi_message.is_same_note(&MidiMessageType::from(delayed_note_off))
-                        ) {
-                            let mut note_off = self.message_queue.remove(delayed_note_off_position);
-                            note_off.play_time_in_samples = absolute_time_midi_message.play_time_in_samples;
-                            self.message_queue.insert_message(note_off);
-                            DebugSocket::send(&*format!(
-                                "delayed note off moved before replacing note on {}",
-                                note_off
-                            ));
-
-                            // make sure the note on is after the note off. The daw may randomly immediately stop the note otherwise
-                            // even if the note off is placed before the note on.
-                            absolute_time_midi_message.play_time_in_samples += 1;
-                        }
-
-                        self.message_queue.insert_message(absolute_time_midi_message);
-                    }
-                    _ => {
-                        self.message_queue.insert_message(absolute_time_midi_message)
-                    }
+            let delay = match MidiMessageType::from(&midi_event.data) {
+                MidiMessageType::NoteOffMessage(_) => {
+                    note_off_delay
                 }
-            }
-        }
+                MidiMessageType::Unsupported => {
+                    continue;
+                }
+                _ => {
+                    0
+                }
+            };
 
-        self.message_queue.merge_notes_off(&mut notes_off, note_off_delay);
+            self.message_queue.insert_message(
+                midi_event.data,
+                delay + midi_event.delta_frames as usize + self.current_time_in_samples
+            );
+        }
     }
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {

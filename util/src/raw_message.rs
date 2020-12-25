@@ -1,10 +1,16 @@
 use core::clone::Clone;
 use core::convert::{From, Into};
 use core::ops::Index;
+use super::messages::ChannelMessage;
 
 #[derive(Copy)]
 pub struct RawMessage([u8; 3]);
 
+impl ChannelMessage for RawMessage {
+    fn get_channel(&self) -> u8 {
+        self.0[0] & 0x0F
+    }
+}
 
 impl Clone for RawMessage {
     fn clone(&self) -> RawMessage {

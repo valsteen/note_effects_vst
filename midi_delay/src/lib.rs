@@ -11,10 +11,9 @@ use std::cell::RefCell;
 
 use parameters::{MidiDelayParameters, Parameter};
 use util::parameters::ParameterConversion;
-use util::midi_message_type::MidiMessageType;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::DelayedMessageConsumer;
-use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
+use util::delayed_message_consumer::process_scheduled_events;
+use vst::event::Event;
 
 
 plugin_main!(MidiDelay);
@@ -59,17 +58,11 @@ impl MidiDelay {
 
     fn send_events(&mut self, samples: usize) {
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
-            let message_consumer: DelayedMessageConsumer = DelayedMessageConsumer {
-                samples_in_buffer: samples,
-                messages: &mut self.message_queue,
-                current_time_in_samples: self.current_time_in_samples,
-                drop_late_events: false
-            };
+            let (next_message_queue, events)
+                = process_scheduled_events(samples, self.current_time_in_samples, &self.message_queue, 0);
 
-            let messages: Vec<AbsoluteTimeMidiMessage> = message_consumer.collect();
-
-            self.send_buffer.borrow_mut()
-                .send_events(messages.iter().map(|e| e.new_midi_event(self.current_time_in_samples) ), &mut host_callback_lock.host);
+            self.message_queue = next_message_queue;
+            self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
         }
     }
 }
@@ -134,25 +127,21 @@ impl Plugin for MidiDelay {
     }
 
     fn process_events(&mut self, events: &api::Events) {
-        let midi_delay = match self
-            .parameters
-            .get_exponential_scale_parameter(Parameter::Delay, 1., 80.)
-        {
-            Some(value) => self.seconds_to_samples(value),
-            _ => 0,
-        };
+        let midi_delay = self.seconds_to_samples(
+            self.parameters.get_exponential_scale_parameter(Parameter::Delay, 1., 80.)
+        );
 
         for event in events.events() {
-            if let Some(mut absolute_time_midi_message) = AbsoluteTimeMidiMessage::from_event(&event, self.current_time_in_samples) {
-                let midi_message = MidiMessageType::from(&absolute_time_midi_message);
-                match midi_message {
-                    MidiMessageType::UnsupportedChannelMessage(_) | MidiMessageType::Unsupported => {}
-                    _ => {
-                        absolute_time_midi_message.play_time_in_samples += midi_delay;
-                        self.message_queue.insert_message(absolute_time_midi_message);
-                    }
-                }
-            }
+            let midi_event = if let Event::Midi(midi_event) = event {
+                midi_event
+            } else {
+                continue
+            };
+
+            self.message_queue.insert_message(
+                midi_event.data,
+                midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+            );
         }
     }
 }

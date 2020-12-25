@@ -1,7 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
+use global_counter::primitive::exact::CounterUsize;
+
 use super::midi_message_type::MidiMessageType;
 use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
+use crate::raw_message::RawMessage;
 
 pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>);
 
@@ -26,74 +29,58 @@ impl DerefMut for AbsoluteTimeMidiMessageVector {
 }
 
 
+// plot twist: this vector is for all events, not just note on/note off.
+// would still be OK to add that metadata to any event after all ? no
+// as a weak reference should be ok
+// then logically
+
+static NOTE_SEQUENCE_ID: CounterUsize = CounterUsize::new(0);
+
 impl AbsoluteTimeMidiMessageVector {
-    // called when receiving events ; caller takes care of not pushing note offs in a first phase
-    pub fn insert_message(&mut self, message: AbsoluteTimeMidiMessage) {
-        if let Some(insert_point) = self.iter().position(|message_at_position| {
-            // since we insert in the same order as originally found, new messages should get after
-            // those already present. Note off being moved after the same note on may occur otherwise
-            message.play_time_in_samples < message_at_position.play_time_in_samples
-        }) {
-            self.insert(insert_point, message);
-        } else {
-            self.push(message);
-        }
-    }
+    pub fn insert_message(&mut self, data: [u8; 3], play_time_in_samples: usize) {
+        // we generate unique identifier per event. this is in order to match note on/note off pairs
+        let channel_pitch_lookup = match MidiMessageType::from(RawMessage::from(data)) {
+            MidiMessageType::NoteOffMessage(midi_message) => {
+                Some((midi_message.channel, midi_message.pitch))
+            }
+            _ => {
+                None
+            }
+        };
 
-    // caller sends the notes off after inserting other events, so we know which notes are planned,
-    // and insert notes off with the configured delay while making sure that between a note off
-    // initial position and its final position, no note of same pitch and channel is triggered,
-    // otherwise we will interrupt this second instance
-    pub fn merge_notes_off(&mut self, notes_off: &mut AbsoluteTimeMidiMessageVector, note_off_delay: usize) {
-        for mut note_off_message in notes_off.iter().copied() {
-            let mut iterator = self.iter();
-            let mut position = 0;
+        let mut last_note_on_match = None ;
 
-            // find original position
-            let mut current_message: Option<&AbsoluteTimeMidiMessage> = loop {
-                match iterator.next() {
-                    None => {
-                        break None;
-                    }
-                    Some(message_at_position) => {
-                        if note_off_message.play_time_in_samples
-                            > message_at_position.play_time_in_samples
-                        {
-                            position += 1;
-                            continue;
-                        } else {
-                            break Some(message_at_position);
-                        }
-                    }
-                }
-            };
-
-            // add delay
-            note_off_message.play_time_in_samples += note_off_delay;
-
-            loop {
-                match current_message {
-                    None => {
-                        self.push(note_off_message);
-                        break;
-                    }
-                    Some(message_at_position) => {
-                        if message_at_position.play_time_in_samples
-                            <= note_off_message.play_time_in_samples
-                        {
-                            if MidiMessageType::from(&note_off_message).is_same_note(&MidiMessageType::from(message_at_position)) {
-                                break;
-                            }
-                            position += 1;
-                            current_message = iterator.next();
-                            continue;
-                        }
-
-                        self.insert(position, note_off_message);
-                        break;
+        let insert_point = self.iter().position(|message_at_position| {
+            if let Some((channel, pitch)) = channel_pitch_lookup {
+                if let MidiMessageType::NoteOnMessage(midi_message) = MidiMessageType::from(*message_at_position) {
+                    if channel == midi_message.channel && pitch == midi_message.pitch {
+                        last_note_on_match = Some(message_at_position);
                     }
                 }
             }
+
+            // we use '<' and not '<=', because this method is called in the same order as events
+            // come, and find their position starting from the beginning of the vector. By moving
+            // past equally timed elements, we keep the original order.
+            play_time_in_samples < message_at_position.play_time_in_samples
+        });
+
+        let id = if let Some(note_message) = last_note_on_match {
+            note_message.id
+        } else {
+            NOTE_SEQUENCE_ID.inc()
+        };
+
+        let message = AbsoluteTimeMidiMessage {
+            data: data.into(),
+            id,
+            play_time_in_samples
+        };
+
+        if let Some(insert_point) = insert_point {
+            self.insert(insert_point, message);
+        } else {
+            self.push(message);
         }
     }
 }
