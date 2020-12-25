@@ -16,12 +16,13 @@ struct PlayingNoteIndex {
     pitch: u8,
 }
 
+struct Live(bool);
 
 #[derive(Default)]
-struct PlayingNotes(HashMap<PlayingNoteIndex, usize>);
+struct PlayingNotes(HashMap<PlayingNoteIndex, (Live, usize)>);
 
 impl Deref for PlayingNotes {
-    type Target = HashMap<PlayingNoteIndex, usize, RandomState>;
+    type Target = HashMap<PlayingNoteIndex, (Live, usize), RandomState>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -35,11 +36,11 @@ impl DerefMut for PlayingNotes {
 }
 
 impl PlayingNotes {
-    fn oldest_playing_note(&self) -> (PlayingNoteIndex, usize) {
+    fn oldest_playing_note(&self, exclude_live: bool) -> (PlayingNoteIndex, usize) {
         self.iter().fold(
             (PlayingNoteIndex { channel: 0, pitch: 0 }, usize::MAX),
-            |(oldest_playing_note, oldest_id), (playing_note, id)| {
-                if *id < oldest_id {
+            |(oldest_playing_note, oldest_id), (playing_note, (live, id))| {
+                if (!live.0 || !exclude_live) && *id < oldest_id {
                     (*playing_note, *id)
                 } else {
                     (oldest_playing_note, oldest_id)
@@ -52,6 +53,7 @@ impl PlayingNotes {
 
 pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                                 messages: &AbsoluteTimeMidiMessageVector, max_notes: u8,
+                                apply_max_notes_to_delayed_notes_only: bool
 ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
     let mut playing_notes: PlayingNotes = PlayingNotes::default();
     let mut queued_messages = AbsoluteTimeMidiMessageVector::default();

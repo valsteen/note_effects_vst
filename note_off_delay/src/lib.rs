@@ -50,6 +50,7 @@ impl NoteOffDelayPlugin {
                 self.current_time_in_samples,
                 &self.message_queue,
                 self.parameters.get_max_notes(),
+                self.parameters.get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly)
             );
 
             self.message_queue = next_message_queue;
@@ -95,7 +96,7 @@ impl Plugin for NoteOffDelayPlugin {
             name: "Note Off Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213173,
-            parameters: 2,
+            parameters: 3,
             category: Category::Effect,
             initial_delay: 0,
             version: 1,
