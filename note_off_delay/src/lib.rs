@@ -79,14 +79,6 @@ impl NoteOffDelayPlugin {
 
     fn increase_time_in_samples(&mut self, samples: usize) {
         let new_time_in_samples = self.current_time_in_samples + samples;
-
-        // tick every second in the debug socket
-        // let old_time_in_seconds = self.seconds_per_sample() * self.current_time_in_samples as f32;
-        // let new_time_in_seconds = self.seconds_per_sample() * new_time_in_samples as f32;
-        //
-        // if old_time_in_seconds.trunc() != new_time_in_seconds.trunc() {
-        //     self.parameters.debug(&*format!("{}s", new_time_in_seconds));
-        // }
         self.current_time_in_samples = new_time_in_samples;
     }
 }
@@ -182,22 +174,33 @@ impl Plugin for NoteOffDelayPlugin {
 
             // TODO: minimum time, maximum time ( with delay )
 
-            let delay = match MidiMessageType::from(&midi_event.data) {
+            match MidiMessageType::from(&midi_event.data) {
                 MidiMessageType::NoteOffMessage(_) => {
-                    note_off_delay
+                    self.message_queue.insert_message(
+                        midi_event.data,
+                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
+                    );
+
+                    if note_off_delay > 0 {
+                        // send two times the note off, the live one will be only used to mark the note on as delayed
+                        self.message_queue.insert_message(
+                            midi_event.data,
+                            note_off_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+                            MessageReason::Delayed,
+                        );
+                    }
+
                 }
                 MidiMessageType::Unsupported => {
                     continue;
                 }
                 _ => {
-                    0
+                    self.message_queue.insert_message(
+                        midi_event.data,
+                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
+                    );
                 }
             };
-
-            self.message_queue.insert_message(
-                midi_event.data,
-                delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
-            );
         }
     }
 

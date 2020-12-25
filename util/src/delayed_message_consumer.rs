@@ -66,7 +66,10 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
     let mut notes_on_to_requeue : HashMap<usize, AbsoluteTimeMidiMessage> = HashMap::new();
     let mut events: Vec<MidiEvent> = vec![];
 
-    let mut add_event = |event: AbsoluteTimeMidiMessage| {
+    let mut add_event = |event: AbsoluteTimeMidiMessage, playing_notes: &mut PlayingNotes| {
+        // note: playing_notes cannot be captured by closure because the method also uses it, causing the borrow checker
+        // to complain
+
         if event.play_time_in_samples < current_time_in_samples + samples {
             // test if it belongs to that time window, as we don't want to replay notes on we put
             // back in the scheduled queue
@@ -91,12 +94,15 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                     }
 
                     // stop this note, don't requeue
+                    playing_notes.remove(&PlayingNoteIndex { pitch: event.get_pitch(), channel: event.get_channel() });
                     notes_on_to_requeue.remove(&event.id);
                 }
                 events.push(event.new_midi_event(current_time_in_samples));
             }
 
             if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
+                playing_notes.insert(PlayingNoteIndex { pitch: event.get_pitch(), channel: event.get_channel() },
+                                     event);
                 notes_on_to_requeue.insert(event.id, event);
             }
         } else {
@@ -129,7 +135,7 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                         id: already_playing_note.id,
                         reason: MessageReason::Retrigger,
                         play_time_in_samples: message.play_time_in_samples,
-                    });
+                    }, &mut playing_notes);
 
                     // move the note on to the next sample or the daw might be confused
                     message.play_time_in_samples += 1;
@@ -138,11 +144,6 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                         = playing_notes.oldest_playing_note(apply_max_notes_to_delayed_notes_only) {
 
                         let oldest_playing_note = *oldest_playing_note; // drop the borrow
-
-                        playing_notes.remove(&PlayingNoteIndex {
-                            channel: oldest_playing_note.get_channel(),
-                            pitch: oldest_playing_note.get_pitch(),
-                        });
 
                         add_event(AbsoluteTimeMidiMessage {
                             data: NoteOff {
@@ -153,12 +154,11 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                             id: oldest_playing_note.id,
                             play_time_in_samples: message.play_time_in_samples,
                             reason: MessageReason::MaxNotes,
-                        });
+                        }, &mut playing_notes);
                     };
                 }
 
-                playing_notes.insert(index, message);
-                add_event(message);
+                add_event(message, &mut playing_notes);
             }
 
             MidiMessageType::NoteOffMessage(note_off) => {
@@ -166,8 +166,7 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                 match playing_notes.get(&playing_note) {
                     Some(currently_playing_note) => {
                         if currently_playing_note.id == message.id {
-                            playing_notes.remove(&playing_note);
-                            add_event(message);
+                            add_event(message, &mut playing_notes);
                             continue;
                         } else {
                             // this note was interrupted earlier already, don't send that
@@ -183,7 +182,7 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                 };
             }
             _ => {
-                add_event(message);
+                add_event(message, &mut playing_notes);
             }
         }
     }
