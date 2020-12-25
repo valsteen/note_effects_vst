@@ -2,9 +2,11 @@ use std::ops::{Deref, DerefMut};
 
 use global_counter::primitive::exact::CounterUsize;
 
-use super::midi_message_type::MidiMessageType;
 use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
-use crate::raw_message::RawMessage;
+use super::debug::DebugSocket;
+use super::delayed_message_consumer::MessageReason;
+use super::midi_message_type::MidiMessageType;
+use super::raw_message::RawMessage;
 
 pub struct AbsoluteTimeMidiMessageVector(Vec<AbsoluteTimeMidiMessage>);
 
@@ -37,7 +39,7 @@ impl DerefMut for AbsoluteTimeMidiMessageVector {
 static NOTE_SEQUENCE_ID: CounterUsize = CounterUsize::new(0);
 
 impl AbsoluteTimeMidiMessageVector {
-    pub fn insert_message(&mut self, data: [u8; 3], play_time_in_samples: usize) {
+    pub fn insert_message(&mut self, data: [u8; 3], play_time_in_samples: usize, reason: MessageReason) {
         // we generate unique identifier per event. this is in order to match note on/note off pairs
         let channel_pitch_lookup = match MidiMessageType::from(RawMessage::from(data)) {
             MidiMessageType::NoteOffMessage(midi_message) => {
@@ -74,9 +76,11 @@ impl AbsoluteTimeMidiMessageVector {
         let message = AbsoluteTimeMidiMessage {
             data: data.into(),
             id,
-            play_time_in_samples
+            play_time_in_samples,
+            reason
         };
 
+        DebugSocket::send(&*format!("Inserting {}", message));
         if let Some(insert_point) = insert_point {
             self.insert(insert_point, message);
         } else {

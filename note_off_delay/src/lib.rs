@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 use vst::event::Event;
 use vst::api::Events;
 
@@ -15,7 +15,7 @@ use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use util::debug::DebugSocket;
-use util::delayed_message_consumer::process_scheduled_events;
+use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
@@ -50,7 +50,8 @@ impl NoteOffDelayPlugin {
                 self.current_time_in_samples,
                 &self.message_queue,
                 self.parameters.get_max_notes(),
-                self.parameters.get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly)
+                self.parameters.get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
+                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0
             );
 
             self.message_queue = next_message_queue;
@@ -195,7 +196,7 @@ impl Plugin for NoteOffDelayPlugin {
 
             self.message_queue.insert_message(
                 midi_event.data,
-                delay + midi_event.delta_frames as usize + self.current_time_in_samples
+                delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
             );
         }
     }

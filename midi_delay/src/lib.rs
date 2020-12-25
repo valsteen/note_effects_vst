@@ -5,14 +5,14 @@ extern crate vst;
 
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 use std::sync::Arc;
 use std::cell::RefCell;
 
 use parameters::{MidiDelayParameters, Parameter};
 use util::parameters::ParameterConversion;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::process_scheduled_events;
+use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use vst::event::Event;
 
 
@@ -59,7 +59,14 @@ impl MidiDelay {
     fn send_events(&mut self, samples: usize) {
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
             let (next_message_queue, events)
-                = process_scheduled_events(samples, self.current_time_in_samples, &self.message_queue, 0);
+                = process_scheduled_events(
+                samples,
+                self.current_time_in_samples,
+                &self.message_queue,
+                0,
+                false,
+                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0
+                );
 
             self.message_queue = next_message_queue;
             self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
@@ -140,7 +147,7 @@ impl Plugin for MidiDelay {
 
             self.message_queue.insert_message(
                 midi_event.data,
-                midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+                midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
             );
         }
     }

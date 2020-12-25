@@ -16,13 +16,19 @@ struct PlayingNoteIndex {
     pitch: u8,
 }
 
-struct Live(bool);
+#[derive(Clone, Copy, PartialEq)]
+pub enum MessageReason {
+    Live,
+    Delayed,   // the same event will exist live and delayed
+    MaxNotes,
+    Retrigger
+}
 
 #[derive(Default)]
-struct PlayingNotes(HashMap<PlayingNoteIndex, (Live, usize)>);
+struct PlayingNotes(HashMap<PlayingNoteIndex, AbsoluteTimeMidiMessage>);
 
 impl Deref for PlayingNotes {
-    type Target = HashMap<PlayingNoteIndex, (Live, usize), RandomState>;
+    type Target = HashMap<PlayingNoteIndex, AbsoluteTimeMidiMessage, RandomState>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -36,16 +42,16 @@ impl DerefMut for PlayingNotes {
 }
 
 impl PlayingNotes {
-    fn oldest_playing_note(&self, exclude_live: bool) -> (PlayingNoteIndex, usize) {
+    fn oldest_playing_note(&self, delayed_only: bool) -> Option<&AbsoluteTimeMidiMessage> {
         self.iter().fold(
-            (PlayingNoteIndex { channel: 0, pitch: 0 }, usize::MAX),
-            |(oldest_playing_note, oldest_id), (playing_note, (live, id))| {
-                if (!live.0 || !exclude_live) && *id < oldest_id {
-                    (*playing_note, *id)
+            None, |prev, (_, message)| {
+                if prev.is_none()
+                    || (!(delayed_only && message.reason == MessageReason::Live) && prev.unwrap().id > message.id) {
+                    Some(message)
                 } else {
-                    (oldest_playing_note, oldest_id)
+                    prev
                 }
-            },
+            }
         )
     }
 }
@@ -53,7 +59,7 @@ impl PlayingNotes {
 
 pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                                 messages: &AbsoluteTimeMidiMessageVector, max_notes: u8,
-                                apply_max_notes_to_delayed_notes_only: bool
+                                apply_max_notes_to_delayed_notes_only: bool, delay_is_active: bool
 ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
     let mut playing_notes: PlayingNotes = PlayingNotes::default();
     let mut queued_messages = AbsoluteTimeMidiMessageVector::default();
@@ -65,15 +71,30 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
             // test if it belongs to that time window, as we don't want to replay notes on we put
             // back in the scheduled queue
             if event.play_time_in_samples >= current_time_in_samples {
-                events.push(event.new_midi_event(current_time_in_samples));
-
                 if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(event) {
-                    // found a note off for this note on in this time window, so we won't requeue
+                    let note_on = notes_on_to_requeue.get_mut( & event.id);
+                    if note_on.is_none() { return }  // no such note running, skip
+                    let note_on = note_on.unwrap();
+
+                    if event.reason == MessageReason::Live && delay_is_active {
+                        // mark the note on as delayed from now on, but don't sent the note off
+                        note_on.reason = MessageReason::Delayed;
+                        return
+                    }
+
+                    if apply_max_notes_to_delayed_notes_only &&
+                        event.reason == MessageReason::MaxNotes &&
+                        note_on.reason == MessageReason::Live {
+                        // should be redundant, as MaxNotes messages are not generated for Live notes.
+                        // keeping the logic to facilitate potential refactoring
+                        return
+                    }
+
+                    // stop this note, don't requeue
                     notes_on_to_requeue.remove(&event.id);
                 }
-            }
-
-            if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
+                events.push(event.new_midi_event(current_time_in_samples));
+            } else if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
                 notes_on_to_requeue.insert(event.id, event);
             }
         } else {
@@ -93,14 +114,9 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
             MidiMessageType::NoteOnMessage(note_on) => {
                 // if still playing : generate note off at current sample, put note on with
                 // delta + 1 in the queue
-                let playing_note = PlayingNoteIndex { channel: note_on.channel, pitch: note_on.pitch };
+                let index = PlayingNoteIndex { channel: note_on.channel, pitch: note_on.pitch };
 
-                if let Some(playing_id) = playing_notes.get(&playing_note) {
-                    let playing_id = *playing_id;
-
-                    // replace the id of the playing note
-                    playing_notes.insert(playing_note, message.id);
-
+                if let Some(already_playing_note) = playing_notes.get(&index) {
                     // we were still playing that note. generate a note off first.
                     add_event(AbsoluteTimeMidiMessage {
                         data: NoteOff {
@@ -108,46 +124,46 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                             pitch: note_on.pitch,
                             velocity: 0,
                         }.into(),
-                        id: playing_id,
+                        id: already_playing_note.id,
+                        reason: MessageReason::Retrigger,
                         play_time_in_samples: message.play_time_in_samples,
                     });
 
                     // move the note on to the next sample or the daw might be confused
                     message.play_time_in_samples += 1;
-                    add_event(message);
-                    continue;
-                } else {
-                    // handle note limit
-                    if max_notes > 0 && playing_notes.len() == max_notes as usize {
-                        let (oldest_playing_note, oldest_id) = playing_notes.oldest_playing_note();
+                } else if max_notes > 0 && playing_notes.len() >= max_notes as usize {
+                    if let Some(oldest_playing_note)
+                        = playing_notes.oldest_playing_note(apply_max_notes_to_delayed_notes_only) {
 
-                        playing_notes.remove(&oldest_playing_note);
-                        playing_notes.insert(playing_note, message.id);
+                        let oldest_playing_note = *oldest_playing_note; // drop the borrow
+
+                        playing_notes.remove(&PlayingNoteIndex {
+                            channel: oldest_playing_note.get_channel(),
+                            pitch: oldest_playing_note.get_pitch(),
+                        });
 
                         add_event(AbsoluteTimeMidiMessage {
                             data: NoteOff {
-                                channel: oldest_playing_note.channel,
-                                pitch: oldest_playing_note.pitch,
+                                channel: oldest_playing_note.get_channel(),
+                                pitch: oldest_playing_note.get_pitch(),
                                 velocity: 0,
                             }.into(),
-                            id: oldest_id,
+                            id: oldest_playing_note.id,
                             play_time_in_samples: message.play_time_in_samples,
+                            reason: MessageReason::MaxNotes,
                         });
-
-                        add_event(message);
-                        continue;
-                    } else {
-                        playing_notes.insert(playing_note, message.id);
-                        add_event(message);
-                        continue;
-                    }
+                    };
                 }
+
+                playing_notes.insert(index, message);
+                add_event(message);
             }
+
             MidiMessageType::NoteOffMessage(note_off) => {
                 let playing_note = PlayingNoteIndex { channel: note_off.channel, pitch: note_off.pitch };
                 match playing_notes.get(&playing_note) {
-                    Some(id) => {
-                        if *id == message.id {
+                    Some(currently_playing_note) => {
+                        if currently_playing_note.id == message.id {
                             playing_notes.remove(&playing_note);
                             add_event(message);
                             continue;
