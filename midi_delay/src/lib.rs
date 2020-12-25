@@ -14,6 +14,7 @@ use util::parameters::ParameterConversion;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use vst::event::Event;
+use util::midi_message_type::MidiMessageType;
 
 
 plugin_main!(MidiDelay);
@@ -145,10 +146,32 @@ impl Plugin for MidiDelay {
                 continue
             };
 
-            self.message_queue.insert_message(
-                midi_event.data,
-                midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
-            );
+            if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(&midi_event.data) {
+                // TODO because of changes in process_scheduled_events specific to delay note off plugin,
+                // note offs need a special handling ; not all usages of process_scheduled_events should have to care
+                // about that
+
+                self.message_queue.insert_message(
+                    midi_event.data,
+                    midi_event.delta_frames as usize + self.current_time_in_samples,
+                    MessageReason::Live,
+                );
+
+                if midi_delay > 0 {
+                    self.message_queue.insert_message(
+                        midi_event.data,
+                        midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+                        MessageReason::Delayed,
+                    );
+                }
+            } else {
+                self.message_queue.insert_message(
+                    midi_event.data,
+                    midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
+                );
+            }
+
+
         }
     }
 }
