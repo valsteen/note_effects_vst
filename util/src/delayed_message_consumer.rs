@@ -55,21 +55,27 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
 ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
     let mut playing_notes: PlayingNotes = PlayingNotes::default();
     let mut queued_messages = AbsoluteTimeMidiMessageVector::default();
+    let mut notes_on_to_requeue : HashMap<usize, AbsoluteTimeMidiMessage> = HashMap::new();
     let mut events: Vec<MidiEvent> = vec![];
 
     let mut add_event = |event: AbsoluteTimeMidiMessage| {
         if event.play_time_in_samples < current_time_in_samples + samples {
-            // don't replay notes on we put back in the schedule queue
+            // test if it belongs to that time window, as we don't want to replay notes on we put
+            // back in the scheduled queue
             if event.play_time_in_samples >= current_time_in_samples {
                 events.push(event.new_midi_event(current_time_in_samples));
+
+                if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(event) {
+                    // found a note off for this note on in this time window, so we won't requeue
+                    notes_on_to_requeue.remove(&event.id);
+                }
             }
 
-            // always requeue note on
             if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
-                queued_messages.push(event)
+                notes_on_to_requeue.insert(event.id, event);
             }
         } else {
-            queued_messages.push(event)
+            queued_messages.push(event);
         }
     };
 
@@ -161,5 +167,10 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
             }
         }
     }
+
+    for (_, event) in notes_on_to_requeue {
+        queued_messages.ordered_insert(event)
+    }
+
     (queued_messages, events)
 }

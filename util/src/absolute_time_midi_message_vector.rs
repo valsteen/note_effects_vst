@@ -83,4 +83,19 @@ impl AbsoluteTimeMidiMessageVector {
             self.push(message);
         }
     }
+
+    pub fn ordered_insert(&mut self, message: AbsoluteTimeMidiMessage) {
+        let position = self.iter().position(|message_at_position| {
+            message.play_time_in_samples < message_at_position.play_time_in_samples
+        });
+
+        match position {
+            Some(position) => {
+                self.insert(position, message)
+            }
+            None => {
+                self.push(message)
+            }
+        }
+    }
 }
