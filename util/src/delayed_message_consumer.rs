@@ -94,7 +94,9 @@ pub fn process_scheduled_events(samples: usize, current_time_in_samples: usize,
                     notes_on_to_requeue.remove(&event.id);
                 }
                 events.push(event.new_midi_event(current_time_in_samples));
-            } else if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
+            }
+
+            if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
                 notes_on_to_requeue.insert(event.id, event);
             }
         } else {
