@@ -3,18 +3,19 @@ mod parameters;
 #[macro_use]
 extern crate vst;
 
-use vst::api;
-use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 use std::sync::Arc;
 use std::cell::RefCell;
+use vst::api::Events;
+use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::event::Event;
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 
 use parameters::{MidiDelayParameters, Parameter};
-use util::parameters::ParameterConversion;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
-use vst::event::Event;
 use util::midi_message_type::MidiMessageType;
+use util::parameters::ParameterConversion;
+
 
 
 plugin_main!(MidiDelay);
@@ -134,7 +135,7 @@ impl Plugin for MidiDelay {
         self.increase_time_in_samples(audio_buffer.samples());
     }
 
-    fn process_events(&mut self, events: &api::Events) {
+    fn process_events(&mut self, events: &Events) {
         let midi_delay = self.seconds_to_samples(
             self.parameters.get_exponential_scale_parameter(Parameter::Delay, 1., 80.)
         );
