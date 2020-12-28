@@ -1,16 +1,18 @@
 [package]
-name = "util"
+name = "audio_data"
 version = "0.1.0"
 authors = ["Vincent Alsteen <vincent.alsteen@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 vst = { git = "https://github.com/rustaudio/vst-rs" }
-global_counter = "0.2.1"
-log-panics = "2.0.0"
-log = "0.4.11"
-simplelog = "0.9.0"
+util = { path = "../util" }
 build-info = "0.0.20"
+log = "0.4.11"
 
 [build-dependencies]
 build-info-build = "0.0.20"
+
+[lib]
+name = "audio_data"
+crate-type = ["cdylib", "lib"]
