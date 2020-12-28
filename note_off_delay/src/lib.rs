@@ -78,8 +78,7 @@ impl NoteOffDelayPlugin {
     }
 
     fn increase_time_in_samples(&mut self, samples: usize) {
-        let new_time_in_samples = self.current_time_in_samples + samples;
-        self.current_time_in_samples = new_time_in_samples;
+        self.current_time_in_samples += samples;
     }
 }
 

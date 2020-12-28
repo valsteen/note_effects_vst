@@ -4,7 +4,8 @@ ARTEFACT_DIRECTORY=artefact
 LIB_PATH_PREFIX=target/release/
 
 for BUNDLE_LIB in "NoteGenerator note_generator" "NoteOffDelay note_off_delay" "FilterOutNonNote filter_out_non_note" \
- " NoteFanOut note_fan_out" "MidiDelay midi_delay" "MaxNoteDuration max_note_duration"; do
+ " NoteFanOut note_fan_out" "MidiDelay midi_delay" "MaxNoteDuration max_note_duration" "AudioData audio_data" \
+ " ArpegiatorPatternReceiver arpegiator_pattern_receiver" "Arpegiator arpegiator" ; do
   BUNDLE_NAME=$(echo $BUNDLE_LIB | cut -f1 -d" ")
   LIBNAME=$(echo $BUNDLE_LIB | cut -f2 -d" ")
   LIB_PATH=${LIB_PATH_PREFIX}lib${LIBNAME}.dylib

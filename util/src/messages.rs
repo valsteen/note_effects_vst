@@ -3,6 +3,7 @@ use vst::event::{Event, MidiEvent};
 
 use super::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use super::raw_message::RawMessage;
+use crate::constants::TIMBRECC;
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
     format!(
@@ -139,8 +140,8 @@ impl NoteMessage for NoteOff {
 }
 
 pub struct Pressure {
-    channel: u8,
-    value: u8
+    pub channel: u8,
+    pub value: u8
 }
 
 impl Into<RawMessage> for Pressure {
@@ -165,9 +166,8 @@ impl ChannelMessage for Pressure {
 }
 
 pub struct PitchBend {
-    channel: u8,
-    semitones: u8,
-    millisemitones: u8
+    pub channel: u8,
+    pub millisemitones: i32
 }
 
 impl ChannelMessage for PitchBend {
@@ -180,8 +180,7 @@ impl Into<RawMessage> for PitchBend {
     fn into(self) -> RawMessage {
         // 96000 millisemitones are expressed over the possible values of 14 bits ( 16384 )
         // which never gets us an exact integer amount of semitones
-        let millisemitones = (self.semitones as i32 * 1000) + self.millisemitones as i32 ;
-        let value = ((millisemitones + 48000) * 16383) / 96000;
+        let value = ((self.millisemitones + 48000) * 16383) / 96000;
         let msb = value >> 7;
         let lsb = value & 0x7F;
         [self.channel + PITCHBEND, lsb as u8, msb as u8].into()
@@ -197,16 +196,15 @@ impl From<RawMessage> for PitchBend {
 
         PitchBend {
             channel: data[0] & 0x0F,
-            semitones: (millisemitones / 1000) as u8,
-            millisemitones: (millisemitones % 1000) as u8
+            millisemitones
         }
     }
 }
 
 pub struct CC {
-    channel: u8,
-    cc: u8,
-    value: u8
+    pub channel: u8,
+    pub cc: u8,
+    pub value: u8
 }
 
 impl Into<RawMessage> for CC {
@@ -249,5 +247,20 @@ impl From<RawMessage> for GenericChannelMessage {
 impl From<&[u8; 3]> for GenericChannelMessage {
     fn from(data: &[u8; 3]) -> Self {
         GenericChannelMessage(RawMessage::from(*data))
+    }
+}
+
+pub struct Timbre {
+    pub channel: u8,
+    pub value: u8
+}
+
+impl Into<RawMessage> for Timbre {
+    fn into(self) -> RawMessage {
+        CC {
+            channel: self.channel,
+            cc: TIMBRECC,
+            value: self.value
+        }.into()
     }
 }

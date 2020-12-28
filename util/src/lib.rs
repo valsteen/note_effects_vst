@@ -13,6 +13,10 @@ pub mod midi_message_type;
 pub mod raw_message;
 pub mod absolute_time_midi_message_vector;
 pub mod delayed_message_consumer;
+pub mod transmute_buffer;
+pub mod logging;
+pub mod midi_message_with_delta;
+pub mod pattern_payload;
 
 #[derive(Default)]
 pub struct HostCallbackLock {

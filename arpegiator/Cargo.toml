@@ -1,5 +1,5 @@
 [package]
-name = "note_off_delay"
+name = "arpegiator"
 version = "0.1.0"
 authors = ["Vincent Alsteen <vincent.alsteen@gmail.com>"]
 edition = "2018"
@@ -9,10 +9,15 @@ vst = { git = "https://github.com/rustaudio/vst-rs" }
 util = { path = "../util" }
 build-info = "0.0.20"
 log = "0.4.11"
+num-traits = "0.2.14"
+itertools = "0.10.0"
+smol = "1.2.5"
+async-net = "1.5.0"
+bincode = "1.3.1"
 
 [build-dependencies]
 build-info-build = "0.0.20"
 
 [lib]
-name = "note_off_delay"
+name = "arpegiator"
 crate-type = ["cdylib", "lib"]
