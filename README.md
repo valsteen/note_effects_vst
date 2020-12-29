@@ -5,6 +5,7 @@
 - [Note generator](#note-generator)
 - [Non-notes filter](#non-notes-filter)
 - [MIDI delay](#midi-delay)
+- [Maximim note duration](#maximum-note-duration)
 
 These VST plugins were made possible thanks to https://github.com/RustAudio/vst-rs
 
@@ -59,6 +60,12 @@ Some VSTs may misbehave when receiving unsupported CCs and other midi messages. 
 ## MIDI delay
 
 Bitwig's timeshift is not modulable, and note delay is limited to 10ms. This plugin just delays all midi signal from <1ms to 1 second.
+
+## Maximum note duration
+
+Can be useful to modulate the length of notes after a note latch for instance, without enforcing the minimum 
+duration as well, that would happen if you would do it using the note length device. Can be also handy if you're 
+looking for a workaround for notes that keep running.
 
 ## Building the VSTs
 

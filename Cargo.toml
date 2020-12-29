@@ -6,5 +6,6 @@ members = [
     "note_off_delay",
     "filter_out_non_note",
     "note_fan_out",
-    "midi_delay"
+    "midi_delay",
+    "max_note_duration"
 ]

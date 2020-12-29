@@ -1,28 +1,32 @@
 use std::sync::Mutex;
-use util::{HostCallbackLock, duration_display};
-use vst::plugin::{HostCallback, PluginParameters};
+
+use vst::plugin::HostCallback ;
 use vst::util::ParameterTransfer;
+
+use util::{HostCallbackLock, duration_display};
 use util::parameters::ParameterConversion;
 
-pub struct MidiDelayParameters {
-    pub host: Mutex<HostCallbackLock>,
+const PARAMETER_COUNT: usize = 1;
+
+pub struct MaxNoteDurationPluginParameters {
+    pub host_mutex: Mutex<HostCallbackLock>,
     pub transfer: ParameterTransfer,
 }
 
 #[repr(i32)]
 pub enum Parameter {
-    Delay = 0,
+    MaxDuration = 0,
 }
-
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
-            0 => Parameter::Delay,
-            _ => panic!(format!("No such Parameter {}", i)),
+            0 => Parameter::MaxDuration,
+            _ => panic!("no such parameter {}", i),
         }
     }
 }
+
 
 impl Into<i32> for Parameter {
     fn into(self) -> i32 {
@@ -31,32 +35,44 @@ impl Into<i32> for Parameter {
 }
 
 
-impl ParameterConversion<Parameter> for MidiDelayParameters {
+impl ParameterConversion<Parameter> for MaxNoteDurationPluginParameters {
     fn get_parameter_transfer(&self) -> &ParameterTransfer {
         &self.transfer
     }
 
     fn get_parameter_count() -> usize {
-        1
+        PARAMETER_COUNT
     }
 }
 
-impl MidiDelayParameters {
+
+impl MaxNoteDurationPluginParameters {
     pub fn new(host: HostCallback) -> Self {
-        MidiDelayParameters {
-            host: Mutex::new(HostCallbackLock { host }),
-            transfer: ParameterTransfer::new(1),
+        MaxNoteDurationPluginParameters {
+            host_mutex: Mutex::new(HostCallbackLock { host }),
+            ..Default::default()
         }
     }
 }
 
 
-impl PluginParameters for MidiDelayParameters {
+impl Default for MaxNoteDurationPluginParameters {
+    fn default() -> Self {
+        MaxNoteDurationPluginParameters {
+            host_mutex: Default::default(),
+            transfer: ParameterTransfer::new(PARAMETER_COUNT),
+        }
+    }
+}
+
+
+impl vst::plugin::PluginParameters for MaxNoteDurationPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index.into() {
-            Parameter::Delay => {
-                let value = self.get_exponential_scale_parameter(Parameter::Delay, 1., 80.);
-                if value > 0. {
+            Parameter::MaxDuration => {
+                let value = self.get_exponential_scale_parameter(Parameter::MaxDuration, 10., 20.);
+
+                if value > 0.0 {
                     duration_display(value)
                 } else {
                     "Off".to_string()
@@ -66,20 +82,21 @@ impl PluginParameters for MidiDelayParameters {
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
-        match Parameter::from(index as i32) {
-            Parameter::Delay => "Delay"
-        }.to_string()
+        match index.into() {
+            Parameter::MaxDuration => "Maximum duration",
+        }
+        .to_string()
     }
 
     fn get_parameter(&self, index: i32) -> f32 {
-        self.transfer.get_parameter(index as usize)
+        self.get_parameter_transfer().get_parameter(index as usize)
     }
 
     fn set_parameter(&self, index: i32, value: f32) {
         match index.into() {
-            Parameter::Delay => {
+            Parameter::MaxDuration => {
                 let old_value = self.get_parameter(index);
-                if (value - old_value).abs() > 0.00001 {
+                if (value - old_value).abs() > 0.0001 {
                     self.transfer.set_parameter(index as usize, value)
                 }
             }
@@ -100,16 +117,5 @@ impl PluginParameters for MidiDelayParameters {
 
     fn load_bank_data(&self, data: &[u8]) {
         self.deserialize_state(data)
-    }
-}
-
-impl Default for MidiDelayParameters {
-    fn default() -> Self {
-        let parameters = MidiDelayParameters {
-            host: Default::default(),
-            transfer: ParameterTransfer::new(1),
-        };
-        parameters.set_byte_parameter(Parameter::Delay, 0);
-        parameters
     }
 }
