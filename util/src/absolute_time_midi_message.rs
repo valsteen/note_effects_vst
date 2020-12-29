@@ -6,7 +6,7 @@ use core::fmt;
 
 use super::raw_message::RawMessage;
 use vst::event::MidiEvent;
-use std::cmp::min;
+use std::cmp::max;
 use crate::delayed_message_consumer::MessageReason;
 
 #[derive(Copy)]
@@ -22,7 +22,7 @@ impl AbsoluteTimeMidiMessage {
     pub fn new_midi_event(&self, current_time_in_samples: usize) -> MidiEvent {
         MidiEvent {
             data: self.data.into(),
-            delta_frames: min(0, self.play_time_in_samples - current_time_in_samples) as i32,
+            delta_frames: max(0, self.play_time_in_samples - current_time_in_samples) as i32,
             live: true,
             note_length: None,
             note_offset: None,
