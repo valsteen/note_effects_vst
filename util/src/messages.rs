@@ -3,7 +3,7 @@ use vst::event::{Event, MidiEvent};
 
 use super::constants::{NOTE_ON, NOTE_OFF, PRESSURE, PITCHBEND};
 use super::raw_message::RawMessage;
-use crate::constants::TIMBRECC;
+use crate::constants::{TIMBRECC, AFTERTOUCH};
 
 pub fn format_midi_event(e: &MidiEvent) -> String {
     format!(
@@ -201,6 +201,36 @@ impl From<RawMessage> for PitchBend {
     }
 }
 
+
+#[derive(Debug)]
+pub struct AfterTouch {
+    pub channel: u8,
+    pub pitch: u8,
+    pub value: u8
+}
+
+impl ChannelMessage for AfterTouch {
+    fn get_channel(&self) -> u8 {
+        self.channel
+    }
+}
+
+impl Into<RawMessage> for AfterTouch {
+    fn into(self) -> RawMessage {
+        [self.channel + AFTERTOUCH, self.pitch, self.value].into()
+    }
+}
+
+impl From<RawMessage> for AfterTouch {
+    fn from(data: RawMessage) -> Self {
+        AfterTouch {
+            channel: data[0] & 0x0F,
+            pitch: data[1],
+            value: data[2]
+        }
+    }
+}
+
 pub struct CC {
     pub channel: u8,
     pub cc: u8,
@@ -209,7 +239,7 @@ pub struct CC {
 
 impl Into<RawMessage> for CC {
     fn into(self) -> RawMessage {
-        [self.channel, self.cc, self.value].into()
+        [0xB0 + self.channel, self.cc, self.value].into()
     }
 }
 

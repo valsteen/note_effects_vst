@@ -3,7 +3,7 @@ use core::convert::{From, Into};
 use core::ops::Index;
 use super::messages::ChannelMessage;
 
-#[derive(Copy)]
+#[derive(Copy, Debug)]
 pub struct RawMessage([u8; 3]);
 
 impl ChannelMessage for RawMessage {

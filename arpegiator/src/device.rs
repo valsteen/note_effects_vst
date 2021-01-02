@@ -44,6 +44,7 @@ pub enum Expression {
     Timbre,
     Pressure,
     PitchBend,
+    AfterTouch
 }
 
 pub enum DeviceChange {
@@ -188,7 +189,24 @@ impl Device {
                     }
                 }
                 DeviceChange::None { time }
-            }
+            },
+            MidiMessageType::AfterTouchMessage(message) => {
+                // redundant with pressure, but that's the message that bitwig will properly handle for by-note
+                // expressions
+                for (_, note) in self.notes.iter_mut() {
+                    if note.channel == message.channel && note.pitch == message.pitch {
+                        note.pressure = message.value;
+                        // since aftertouch is assigned by pitch and channel, contrary to channel pressure
+                        // we are sure it's only affecting one note
+                        return DeviceChange::NoteExpressionChange {
+                            time,
+                            expression: Expression::Pressure,
+                            note: *note,
+                        };
+                    }
+                }
+                DeviceChange::None { time }
+            },
             MidiMessageType::PitchBendMessage(message) => {
                 self.channels[message.channel as usize].pitchbend = message.millisemitones;
                 for (_, note) in self.notes.iter_mut() {
@@ -206,7 +224,8 @@ impl Device {
                 DeviceChange::None { time }
             }
             MidiMessageType::UnsupportedChannelMessage(_) => DeviceChange::None { time },
-            MidiMessageType::Unsupported => DeviceChange::None { time }
+            MidiMessageType::Unsupported => DeviceChange::None { time },
+
         }
     }
 }

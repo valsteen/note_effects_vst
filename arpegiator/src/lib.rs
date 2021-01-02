@@ -7,7 +7,7 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use device_out::DeviceOut;
 use util::logging::logging_setup;
-use util::messages::{PitchBend, Pressure, Timbre};
+use util::messages::{PitchBend, Pressure, Timbre, AfterTouch};
 use util::raw_message::RawMessage;
 
 use crate::change::SourceChange;
@@ -20,6 +20,7 @@ use crate::parameters::ArpegiatorParameters;
 use crate::socket::{SocketChannels, SocketCommand, create_socket_thread};
 use std::thread::JoinHandle;
 use std::mem::take;
+use crate::note::Note;
 
 pub mod pattern;
 mod note;
@@ -230,20 +231,42 @@ impl Plugin for ArpegiatorPlugin {
                         }
 
                         PatternDeviceChange::PatternExpressionChange { expression, pattern, .. } => {
-                            let raw_message: RawMessage = match expression {
+                            let raw_message: Option<RawMessage> = match expression {
                                 Expression::Timbre => {
-                                    Timbre { channel: pattern.channel, value: pattern.timbre }.into()
-                                }
-                                Expression::Pressure => {
-                                    Pressure { channel: pattern.channel, value: pattern.pressure }.into()
+                                    Some(Timbre { channel: pattern.channel, value: pattern.timbre }.into())
                                 }
                                 Expression::PitchBend => {
-                                    PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }.into()
+                                    Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }
+                                             .into())
+                                }
+                                Expression::Pressure | Expression::AfterTouch => {
+                                    #[cfg(use_channel_pressure)]
+                                    {
+                                        Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
+                                    }
+
+                                    #[cfg(not(use_channel_pressure))]
+                                    match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
+                                        None => None,
+                                        Some(note) => {
+                                            if let Some(pitch) = pattern.transpose(note.pitch) {
+                                                Some(AfterTouch {
+                                                    channel: pattern.channel,
+                                                    pitch,
+                                                    value: pattern.pressure
+                                                }.into())
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                    }
                                 }
                             };
 
-                            self.device_out.update(MidiMessageWithDelta { delta_frames, data: raw_message.into() },
-                                                   current_time, None);
+                            if let Some(raw_message) = raw_message {
+                                self.device_out.update(MidiMessageWithDelta { delta_frames, data: raw_message.into() },
+                                                       current_time, None);
+                            }
                         }
                         PatternDeviceChange::RemovePattern { pattern, .. } => {
                             self.device_out.push_note_off(pattern.id, pattern.velocity_off,

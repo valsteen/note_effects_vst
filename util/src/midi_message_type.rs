@@ -2,6 +2,7 @@ use core::convert::From;
 use super::raw_message::RawMessage;
 use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 use super::messages::{NoteOn, NoteOff, CC, Pressure, PitchBend, GenericChannelMessage};
+use crate::messages::AfterTouch;
 
 
 pub enum MidiMessageType {
@@ -10,6 +11,7 @@ pub enum MidiMessageType {
     CCMessage(CC),
     PressureMessage(Pressure),
     PitchBendMessage(PitchBend),
+    AfterTouchMessage(AfterTouch),
     UnsupportedChannelMessage(GenericChannelMessage),
     Unsupported
 }
