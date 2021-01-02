@@ -21,3 +21,8 @@ build-info-build = "0.0.20"
 [lib]
 name = "arpegiator"
 crate-type = ["cdylib", "lib"]
+
+[features]
+#default = []
+default = ["use_channel_pressure"]
+use_channel_pressure = []

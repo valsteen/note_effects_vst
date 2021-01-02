@@ -55,7 +55,7 @@ pub struct ArpegiatorPlugin {
     device_out: DeviceOut,
     parameters: Arc<ArpegiatorParameters>,
     socket_channels: Option<SocketChannels>,
-    thread_handle: Option<JoinHandle<()>>
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 
@@ -89,7 +89,7 @@ impl Default for ArpegiatorPlugin {
             device_out: DeviceOut::default(),
             parameters: Arc::new(ArpegiatorParameters::new()),
             socket_channels: None,
-            thread_handle: None
+            thread_handle: None,
         }
     }
 }
@@ -118,8 +118,10 @@ impl Plugin for ArpegiatorPlugin {
 
     fn new(host: HostCallback) -> Self {
         logging_setup();
-        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version,
-        $.compiler, $.timestamp));
+        info!("{} use_channel_pressure: {}",
+              build_info::format!("{{{} v{} built with {} at {}}} ", $.crate_info.name, $.crate_info.version, $
+              .compiler, $.timestamp), if cfg!(feature = "use_channel_pressure") { true } else { false });
+
         ArpegiatorPlugin {
             events: vec![],
             send_buffer: Default::default(),
@@ -131,17 +133,17 @@ impl Plugin for ArpegiatorPlugin {
             device_out: DeviceOut::default(),
             parameters: Arc::new(ArpegiatorParameters::new()),
             socket_channels: None,
-            thread_handle: None
+            thread_handle: None,
         }
     }
 
     fn resume(&mut self) {
         self.close_socket();
 
-        self.current_time = 0 ;
+        self.current_time = 0;
 
         let (join_handle, socket_channels) = create_socket_thread();
-        self.thread_handle = Some(join_handle) ;
+        self.thread_handle = Some(join_handle);
 
         socket_channels.command_sender.try_send(SocketCommand::SetPort(self.parameters.get_port())).unwrap();
 
@@ -165,12 +167,12 @@ impl Plugin for ArpegiatorPlugin {
         use vst::plugin::CanDo::*;
 
         match can_do {
-            SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline => Yes,
+            SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | MidiSingleNoteTuningChange | MidiKeyBasedInstrumentControl => Yes,
             Other(s) => {
                 if s == "MPE" {
                     Yes
                 } else {
-
+                    info!("Cando : {}", s);
                     Maybe
                 }
             }
@@ -239,24 +241,21 @@ impl Plugin for ArpegiatorPlugin {
                                     Some(Timbre { channel: pattern.channel, value: pattern.timbre }.into())
                                 }
                                 Expression::PitchBend => {
-                                    Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }
-                                             .into())
+                                    Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }.into())
                                 }
                                 Expression::Pressure | Expression::AfterTouch => {
-                                    #[cfg(use_channel_pressure)]
-                                    {
+                                    #[cfg(use_channel_pressure)] {
                                         Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
                                     }
 
-                                    #[cfg(not(use_channel_pressure))]
-                                    match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
+                                    #[cfg(not(use_channel_pressure))] match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
                                         None => None,
                                         Some(note) => {
                                             if let Some(pitch) = pattern.transpose(note.pitch) {
                                                 Some(AfterTouch {
                                                     channel: pattern.channel,
                                                     pitch,
-                                                    value: pattern.pressure
+                                                    value: pattern.pressure,
                                                 }.into())
                                             } else {
                                                 None

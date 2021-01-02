@@ -40,19 +40,19 @@ impl ExpressiveNote {
 
     pub fn into_rawmessages(self) -> Vec<RawMessage> {
         vec![
-            NoteOn {
+            PitchBend {
                 channel: self.channel,
-                pitch: self.pitch,
-                velocity: self.velocity, // todo mixing between pattern and note
+                millisemitones: self.pitchbend,
             }.into(),
-            self.get_pressure_note(),
             Timbre {
                 channel: self.channel,
                 value: self.timbre,
             }.into(),
-            PitchBend {
+            self.get_pressure_note(),
+            NoteOn {
                 channel: self.channel,
-                millisemitones: self.pitchbend,
+                pitch: self.pitch,
+                velocity: self.velocity, // todo mixing between pattern and note
             }.into(),
         ]
     }
