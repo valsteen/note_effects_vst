@@ -25,6 +25,7 @@ plugin_main!(ArpegiatorPatternReceiver);
 
 
 struct ArpegiatorPatternReceiver {
+    #[allow(dead_code)]
     host: HostCallback,
     socket_thread_handle: Option<JoinHandle<()>>,
     socket_channel_sender: Option<Sender<SenderSocketCommand>>,

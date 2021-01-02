@@ -7,7 +7,11 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use device_out::DeviceOut;
 use util::logging::logging_setup;
-use util::messages::{PitchBend, Pressure, Timbre, AfterTouch};
+use util::messages::{PitchBend, Timbre, AfterTouch};
+
+#[cfg(use_channel_pressure)]
+use util::messages::Pressure;
+
 use util::raw_message::RawMessage;
 
 use crate::change::SourceChange;
@@ -20,7 +24,6 @@ use crate::parameters::ArpegiatorParameters;
 use crate::socket::{SocketChannels, SocketCommand, create_socket_thread};
 use std::thread::JoinHandle;
 use std::mem::take;
-use crate::note::Note;
 
 pub mod pattern;
 mod note;

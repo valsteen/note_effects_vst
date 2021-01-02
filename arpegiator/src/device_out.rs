@@ -1,4 +1,6 @@
+#[allow(unused_imports)]
 use log::{error, info};
+
 use vst::buffer::SendEventBuffer;
 use vst::plugin::HostCallback;
 

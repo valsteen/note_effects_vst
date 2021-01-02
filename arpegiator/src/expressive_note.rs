@@ -1,7 +1,11 @@
+#[allow(unused_imports)]
 use log::info;
 
 use util::raw_message::RawMessage;
-use util::messages::{NoteOn, Timbre, Pressure, PitchBend, AfterTouch};
+use util::messages::{NoteOn, Timbre, PitchBend, AfterTouch};
+
+#[cfg(use_channel_pressure)]
+use util::messages::Pressure;
 
 
 pub struct ExpressiveNote {
