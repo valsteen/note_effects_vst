@@ -23,6 +23,7 @@ pub struct WorkerChannels {
     pub worker: JoinHandle<()>,
 }
 
+#[derive(Debug)]
 enum WorkerResult {
     Command(WorkerCommand),
     PayloadError(bincode::Error),
@@ -179,6 +180,7 @@ pub fn create_worker_thread() -> WorkerChannels {
                 runnable.run();
 
                 let worker_result = worker_result_receiver.recv().await.unwrap();
+                info!("Runnable executed, got {:?}", worker_result);
 
                 match worker_result {
                     WorkerResult::Command(command) => {
