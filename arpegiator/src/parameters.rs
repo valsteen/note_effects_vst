@@ -3,7 +3,7 @@ use vst::util::ParameterTransfer;
 
 use util::parameters::ParameterConversion;
 use util::parameter_value_conversion::f32_to_byte;
-use crate::socket::SocketCommand;
+use crate::worker::WorkerCommand;
 use std::sync::Mutex;
 use smol::channel::Sender;
 
@@ -12,7 +12,7 @@ const BASE_PORT: u16 = 6000;
 
 pub struct ArpegiatorParameters {
     pub transfer: ParameterTransfer,
-    pub socket_command: Mutex<Option<Sender<SocketCommand>>>
+    pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>
 }
 
 impl ArpegiatorParameters {
@@ -22,8 +22,8 @@ impl ArpegiatorParameters {
 
     pub fn update_port(&self) {
         let port = self.get_byte_parameter(Parameter::PortIndex);
-        self.socket_command.lock().unwrap().as_ref().unwrap().try_send(
-            SocketCommand::SetPort(BASE_PORT + port as u16)
+        self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
+            WorkerCommand::SetPort(BASE_PORT + port as u16)
         ).unwrap();
     }
 }
@@ -65,7 +65,7 @@ impl ArpegiatorParameters {
     pub fn new() -> Self {
         ArpegiatorParameters {
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
-            socket_command: Mutex::new(None)
+            worker_commands: Mutex::new(None)
         }
     }
 }

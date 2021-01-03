@@ -1,9 +1,6 @@
 #[allow(unused_imports)]
 use log::{error, info};
 
-use vst::buffer::SendEventBuffer;
-use vst::plugin::HostCallback;
-
 use util::messages::NoteOff;
 use util::raw_message::RawMessage;
 
@@ -12,6 +9,8 @@ use crate::expressive_note::ExpressiveNote;
 use crate::note::Note;
 use crate::pattern::Pattern;
 use util::midi_message_with_delta::MidiMessageWithDelta;
+use smol::channel::Sender;
+use crate::midi_controller_worker::ControllerCommand;
 
 
 #[derive(Default)]
@@ -27,23 +26,28 @@ impl DeviceOut {
         self.device.update(midi_message, current_time, id);
     }
 
-    pub fn flush_to(&mut self, send_buffer: &mut SendEventBuffer, host: &mut HostCallback) {
-        send_buffer.send_events(self.queue.drain(..).map(|message| message.new_midi_event()), host);
+    pub fn flush_to(&mut self, midi_controller_sender: &Sender<ControllerCommand>) {
+        for message in self.queue.drain(..) {
+            if let Err(err) = midi_controller_sender.try_send(
+                ControllerCommand::RawMessage(RawMessage::from(message.data))) {
+                error!("Could not send to the controller worker {}", err)
+            }
+        }
     }
 
     pub fn push_note_off(&mut self, note_id: usize, velocity_off: u8, delta_frames: u16, current_time: usize) {
         let note = match self.device.notes.values().find(|note| note.id == note_id) {
             None => {
                 // info!("Cannot find note to stop: {:02x?}", note_id);
-                return
+                return;
             }
             Some(note) => note
         };
 
-        let raw_message : RawMessage = NoteOff {
+        let raw_message: RawMessage = NoteOff {
             channel: note.channel,
             pitch: note.pitch,
-            velocity: velocity_off
+            velocity: velocity_off,
         }.into();
 
         self.update(MidiMessageWithDelta {
@@ -54,7 +58,7 @@ impl DeviceOut {
 
     pub fn push_note_on(&mut self, pattern: &Pattern, note: &Note, current_time: usize) {
         let pitch = match pattern.transpose(note.pitch) {
-            None => { return }
+            None => { return; }
             Some(pitch) => pitch
         };
 
@@ -72,7 +76,7 @@ impl DeviceOut {
                     data: raw_message.into(),
                 },
                 current_time,
-                Some(pattern.id)
+                Some(pattern.id),
             );
         }
     }

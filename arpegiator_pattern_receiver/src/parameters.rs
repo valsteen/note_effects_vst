@@ -3,9 +3,10 @@ use vst::util::ParameterTransfer;
 
 use util::parameters::ParameterConversion;
 use util::parameter_value_conversion::f32_to_byte;
-use std::sync::mpsc::Sender;
 use crate::socket::SenderSocketCommand;
 use std::sync::Mutex;
+use std::sync::mpsc::Sender;
+
 
 const PARAMETER_COUNT: usize = 1;
 const BASE_PORT: u16 = 6000;

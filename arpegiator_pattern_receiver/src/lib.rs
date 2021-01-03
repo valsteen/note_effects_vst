@@ -1,4 +1,3 @@
-use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use log::{info, error};
@@ -14,6 +13,7 @@ use std::mem::take;
 use crate::parameters::ArpegiatorPatternReceiverParameters;
 use std::sync::Arc;
 use util::pattern_payload::PatternPayload;
+use std::sync::mpsc::Sender;
 
 mod parameters;
 mod socket;

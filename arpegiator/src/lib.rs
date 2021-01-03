@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use log::{error, info};
 use vst::api;
-use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::buffer::AudioBuffer;
 use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
@@ -21,7 +21,7 @@ use crate::timed_event::TimedEvent;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use std::sync::Arc;
 use crate::parameters::ArpegiatorParameters;
-use crate::socket::{SocketChannels, SocketCommand, create_socket_thread};
+use crate::worker::{WorkerChannels, WorkerCommand, create_worker_thread};
 use std::thread::JoinHandle;
 use std::mem::take;
 
@@ -34,7 +34,8 @@ mod change;
 mod expressive_note;
 mod device_out;
 mod parameters;
-mod socket;
+mod worker;
+mod midi_controller_worker;
 
 
 #[macro_use]
@@ -46,23 +47,22 @@ plugin_main!(ArpegiatorPlugin);
 
 pub struct ArpegiatorPlugin {
     events: Vec<MidiEvent>,
-    send_buffer: SendEventBuffer,
-    host: HostCallback,
+    _host: HostCallback,
     pattern_device_in: Device,
     notes_device_in: Device,
     pattern_device: PatternDevice,
     current_time: usize,
     device_out: DeviceOut,
     parameters: Arc<ArpegiatorParameters>,
-    socket_channels: Option<SocketChannels>,
+    worker_channels: Option<WorkerChannels>,
     thread_handle: Option<JoinHandle<()>>,
 }
 
 
 impl ArpegiatorPlugin {
     fn close_socket(&mut self) {
-        if let Some(socket_channels) = self.socket_channels.as_ref() {
-            if let Err(e) = socket_channels.command_sender.try_send(SocketCommand::Stop) {
+        if let Some(worker_channels) = self.worker_channels.as_ref() {
+            if let Err(e) = worker_channels.command_sender.try_send(WorkerCommand::Stop) {
                 error!("Error while closing note receiver channel : {:?}", e)
             }
         }
@@ -71,7 +71,7 @@ impl ArpegiatorPlugin {
             thread_handle.join().unwrap();
         }
 
-        self.socket_channels = None; // so the channel is not dropped before the thread is joined
+        self.worker_channels = None; // so the channel is not dropped before the thread is joined
     }
 }
 
@@ -80,15 +80,14 @@ impl Default for ArpegiatorPlugin {
     fn default() -> Self {
         ArpegiatorPlugin {
             events: vec![],
-            send_buffer: Default::default(),
-            host: Default::default(),
+            _host: Default::default(),
             pattern_device_in: Default::default(),
             notes_device_in: Default::default(),
             pattern_device: PatternDevice::default(),
             current_time: 0,
             device_out: DeviceOut::default(),
             parameters: Arc::new(ArpegiatorParameters::new()),
-            socket_channels: None,
+            worker_channels: None,
             thread_handle: None,
         }
     }
@@ -120,19 +119,18 @@ impl Plugin for ArpegiatorPlugin {
         logging_setup();
         info!("{} use_channel_pressure: {}",
               build_info::format!("{{{} v{} built with {} at {}}} ", $.crate_info.name, $.crate_info.version, $
-              .compiler, $.timestamp), if cfg!(feature = "use_channel_pressure") { true } else { false });
+              .compiler, $.timestamp), cfg!(feature = "use_channel_pressure"));
 
         ArpegiatorPlugin {
             events: vec![],
-            send_buffer: Default::default(),
-            host,
+            _host: host,
             pattern_device_in: Default::default(),
             notes_device_in: Default::default(),
             pattern_device: Default::default(),
             current_time: 0,
             device_out: DeviceOut::default(),
             parameters: Arc::new(ArpegiatorParameters::new()),
-            socket_channels: None,
+            worker_channels: None,
             thread_handle: None,
         }
     }
@@ -142,16 +140,15 @@ impl Plugin for ArpegiatorPlugin {
 
         self.current_time = 0;
 
-        let (join_handle, socket_channels) = create_socket_thread();
-        self.thread_handle = Some(join_handle);
+        let worker_channels = create_worker_thread();
 
-        socket_channels.command_sender.try_send(SocketCommand::SetPort(self.parameters.get_port())).unwrap();
+        worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port())).unwrap();
 
-        if let Ok(mut socket_command) = self.parameters.socket_command.lock() {
-            *socket_command = Some(socket_channels.command_sender.clone());
+        if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
+            *worker_commands = Some(worker_channels.command_sender.clone());
         }
 
-        self.socket_channels = Some(socket_channels);
+        self.worker_channels = Some(worker_channels);
     }
 
     fn suspend(&mut self) {
@@ -181,7 +178,7 @@ impl Plugin for ArpegiatorPlugin {
     }
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        let messages = match self.socket_channels.as_ref() {
+        let messages = match self.worker_channels.as_ref() {
             None => vec![],
             Some(socket_channels) => {
                 match socket_channels.notes_receiver.try_recv() {
@@ -290,7 +287,11 @@ impl Plugin for ArpegiatorPlugin {
                 }
             }
 
-            self.device_out.flush_to(&mut self.send_buffer, &mut self.host)
+            if let Some(worker_channels) = self.worker_channels.as_ref() {
+                self.device_out.flush_to(&worker_channels.midi_controller_sender)
+            }
+
+
         }
 
         self.events.clear();

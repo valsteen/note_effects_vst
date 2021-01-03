@@ -1,9 +1,9 @@
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
-use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 
 use util::pattern_payload::PatternPayload;
+use std::sync::mpsc::{channel, Sender};
 
 pub enum SenderSocketCommand {
     Stop,
