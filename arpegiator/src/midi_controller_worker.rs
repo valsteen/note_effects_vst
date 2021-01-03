@@ -7,12 +7,14 @@ use midir::os::unix::VirtualOutput;
 use util::constants::PRESSURE;
 use smol::channel::Receiver;
 
+#[derive(Debug)]
 pub enum ControllerCommand {
     RawMessage(RawMessage),
     Stop,
 }
 
 pub async fn midi_controller_worker(name: String, control_channel: Receiver<ControllerCommand>) {
+    info!("Creating midi device {}", name);
     let midi_out = match MidiOutput::new(&*name) {
         Ok(midi_out) => midi_out,
         Err(err) => {
@@ -41,7 +43,10 @@ pub async fn midi_controller_worker(name: String, control_channel: Receiver<Cont
                             return
                         }
                     }
-                    ControllerCommand::Stop => { return }
+                    ControllerCommand::Stop => {
+                        midi_connection.close();
+                        return
+                    }
                 }
             }
             Err(err) => {

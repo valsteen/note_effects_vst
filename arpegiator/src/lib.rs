@@ -288,10 +288,8 @@ impl Plugin for ArpegiatorPlugin {
             }
 
             if let Some(worker_channels) = self.worker_channels.as_ref() {
-                self.device_out.flush_to(&worker_channels.midi_controller_sender)
+                self.device_out.flush_to(&worker_channels.command_sender)
             }
-
-
         }
 
         self.events.clear();

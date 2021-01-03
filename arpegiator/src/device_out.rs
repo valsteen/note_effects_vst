@@ -11,6 +11,7 @@ use crate::pattern::Pattern;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use smol::channel::Sender;
 use crate::midi_controller_worker::ControllerCommand;
+use crate::worker::WorkerCommand;
 
 
 #[derive(Default)]
@@ -26,10 +27,10 @@ impl DeviceOut {
         self.device.update(midi_message, current_time, id);
     }
 
-    pub fn flush_to(&mut self, midi_controller_sender: &Sender<ControllerCommand>) {
+    pub fn flush_to(&mut self, midi_controller_sender: &Sender<WorkerCommand>) {
         for message in self.queue.drain(..) {
             if let Err(err) = midi_controller_sender.try_send(
-                ControllerCommand::RawMessage(RawMessage::from(message.data))) {
+                WorkerCommand::SendToController(ControllerCommand::RawMessage(RawMessage::from(message.data)))) {
                 error!("Could not send to the controller worker {}", err)
             }
         }

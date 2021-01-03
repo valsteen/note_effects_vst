@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{error, info};
+
 use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
@@ -12,7 +15,7 @@ const BASE_PORT: u16 = 6000;
 
 pub struct ArpegiatorParameters {
     pub transfer: ParameterTransfer,
-    pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>
+    pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>,
 }
 
 impl ArpegiatorParameters {
@@ -21,9 +24,10 @@ impl ArpegiatorParameters {
     }
 
     pub fn update_port(&self) {
-        let port = self.get_byte_parameter(Parameter::PortIndex);
+        let port = self.get_byte_parameter(Parameter::PortIndex) as u16 + BASE_PORT;
+        info!("Applying parameter change: port={}", port);
         self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
-            WorkerCommand::SetPort(BASE_PORT + port as u16)
+            WorkerCommand::SetPort(port)
         ).unwrap();
     }
 }
@@ -65,7 +69,7 @@ impl ArpegiatorParameters {
     pub fn new() -> Self {
         ArpegiatorParameters {
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
-            worker_commands: Mutex::new(None)
+            worker_commands: Mutex::new(None),
         }
     }
 }
