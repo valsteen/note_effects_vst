@@ -5,7 +5,8 @@ use util::raw_message::RawMessage;
 use midir::MidiOutput;
 use midir::os::unix::VirtualOutput;
 use util::constants::PRESSURE;
-use smol::channel::Receiver;
+use async_channel::Receiver;
+
 
 #[derive(Debug)]
 pub enum ControllerCommand {
@@ -44,6 +45,7 @@ pub async fn midi_controller_worker(name: String, control_channel: Receiver<Cont
                         }
                     }
                     ControllerCommand::Stop => {
+                        info!("Stopping controller {}", name);
                         midi_connection.close();
                         return
                     }

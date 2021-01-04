@@ -8,7 +8,8 @@ use util::parameters::ParameterConversion;
 use util::parameter_value_conversion::f32_to_byte;
 use crate::worker::WorkerCommand;
 use std::sync::Mutex;
-use smol::channel::Sender;
+use async_channel::Sender;
+
 
 const PARAMETER_COUNT: usize = 1;
 const BASE_PORT: u16 = 6000;

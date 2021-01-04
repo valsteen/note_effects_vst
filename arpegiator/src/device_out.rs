@@ -9,9 +9,9 @@ use crate::expressive_note::ExpressiveNote;
 use crate::note::Note;
 use crate::pattern::Pattern;
 use util::midi_message_with_delta::MidiMessageWithDelta;
-use smol::channel::Sender;
 use crate::midi_controller_worker::ControllerCommand;
 use crate::worker::WorkerCommand;
+use async_channel::Sender;
 
 
 #[derive(Default)]
