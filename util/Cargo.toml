@@ -18,3 +18,7 @@ features = ["with-backtrace"]
 
 [build-dependencies]
 build-info-build = "0.0.20"
+
+[features]
+default = ["enable_logging"]
+enable_logging = []

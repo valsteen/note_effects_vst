@@ -2,11 +2,13 @@
 use log::info;
 
 use util::raw_message::RawMessage;
-use util::messages::{NoteOn, Timbre, PitchBend, AfterTouch};
+use util::messages::{NoteOn, Timbre, PitchBend};
 
-#[cfg(use_channel_pressure)]
+#[cfg(feature="use_channel_pressure")]
 use util::messages::Pressure;
 
+#[cfg(not(feature="use_channel_pressure"))]
+use util::messages::AfterTouch;
 
 pub struct ExpressiveNote {
     pub channel: u8,
@@ -19,7 +21,7 @@ pub struct ExpressiveNote {
 
 
 impl ExpressiveNote {
-    #[cfg(not(use_channel_pressure))]
+    #[cfg(not(feature="use_channel_pressure"))]
     #[inline]
     fn get_pressure_note(&self) -> RawMessage {
         AfterTouch {
@@ -29,7 +31,7 @@ impl ExpressiveNote {
         }.into()
     }
 
-    #[cfg(use_channel_pressure)]
+    #[cfg(feature="use_channel_pressure")]
     #[inline]
     fn get_pressure_note(&self) -> RawMessage {
         Pressure {

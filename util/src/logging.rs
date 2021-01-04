@@ -1,9 +1,8 @@
-// i.e. pass RUSTFLAGS='--cfg enable_logging' to enable
-#[cfg(not(enable_logging))]
+#[cfg(not(feature="enable_logging"))]
 pub fn logging_setup() {}
 
 
-#[cfg(enable_logging)]
+#[cfg(feature="enable_logging")]
 pub fn logging_setup() {
     use log::info;
     use simplelog::*;

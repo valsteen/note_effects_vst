@@ -104,7 +104,7 @@ async fn command_reader(command_receiver: Receiver<WorkerCommand>, worker_result
     loop {
         match command_receiver.recv().await {
             Ok(command) => {
-                #[cfg(worker_debug)]
+                #[cfg(feature="worker_debug")]
                 info!("Received command {:?}", command);
                 worker_result_sender.send(WorkerResult::Command(command)).await.unwrap()
             },
@@ -155,10 +155,10 @@ pub fn create_worker_thread() -> WorkerChannels {
             }
 
             loop {
-                #[cfg(worker_debug)]
+                #[cfg(feature="worker_debug")]
                 info!("waiting for a command");
                 let worker_result = worker_result_receiver.recv().await.unwrap();
-                #[cfg(worker_debug)]
+                #[cfg(feature="worker_debug")]
                 info!("Got {:02X?}", worker_result);
 
                 match worker_result {

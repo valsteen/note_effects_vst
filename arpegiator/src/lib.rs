@@ -7,10 +7,13 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use device_out::DeviceOut;
 use util::logging::logging_setup;
-use util::messages::{PitchBend, Timbre, AfterTouch};
+use util::messages::{PitchBend, Timbre};
 
-#[cfg(use_channel_pressure)]
+#[cfg(feature="use_channel_pressure")]
 use util::messages::Pressure;
+
+#[cfg(not(feature="use_channel_pressure"))]
+use util::messages::AfterTouch;
 
 use util::raw_message::RawMessage;
 
@@ -241,11 +244,12 @@ impl Plugin for ArpegiatorPlugin {
                                     Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }.into())
                                 }
                                 Expression::Pressure | Expression::AfterTouch => {
-                                    #[cfg(use_channel_pressure)] {
+                                    #[cfg(feature="use_channel_pressure")] {
                                         Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
                                     }
 
-                                    #[cfg(not(use_channel_pressure))] match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
+                                    #[cfg(not(feature="use_channel_pressure"))] match self.notes_device_in.notes
+                                        .values().sorted().nth(pattern.index as usize) {
                                         None => None,
                                         Some(note) => {
                                             if let Some(pitch) = pattern.transpose(note.pitch) {
