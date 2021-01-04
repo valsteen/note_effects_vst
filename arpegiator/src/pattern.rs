@@ -61,7 +61,7 @@ impl From<Note> for Pattern {
             index,
             velocity_off: 0,
             pressure: 0,
-            timbre: 0,
+            timbre: 64,
             octave,
             pressed_at: note.pressed_at,
             released_at: 0,

@@ -18,7 +18,7 @@ use util::messages::AfterTouch;
 use util::raw_message::RawMessage;
 
 use crate::change::SourceChange;
-use crate::device::{Device, Expression};
+use crate::device::{Device, Expression, DeviceChange};
 use crate::pattern_device::{PatternDevice, PatternDeviceChange};
 use crate::timed_event::TimedEvent;
 use util::midi_message_with_delta::MidiMessageWithDelta;
@@ -27,6 +27,7 @@ use crate::parameters::ArpegiatorParameters;
 use crate::worker::{WorkerChannels, WorkerCommand, create_worker_thread};
 use std::thread::JoinHandle;
 use std::mem::take;
+use std::os::raw::c_void;
 
 pub mod pattern;
 mod note;
@@ -116,6 +117,15 @@ impl Plugin for ArpegiatorPlugin {
             preset_chunks: true,
             silent_when_stopped: true,
         }
+    }
+
+    fn vendor_specific(&mut self, index: i32, value: isize, ptr: *mut c_void, opt: f32) -> isize {
+        // according to MPE specifications a vendor specific call should occur in order to signal VST
+        // support ( page 15 ). As it seems all bitwig does is setting "MPE support" to true by default
+        // when CanDo replies to "MPE", and it's just sending pitchwheel/pressure.
+        // https://d30pueezughrda.cloudfront.net/campaigns/mpe/mpespec.pdf
+        info!("vendor_specific {:?} {:?} {:?} {:?}", index, value, ptr, opt);
+        0
     }
 
     fn new(host: HostCallback) -> Self {
@@ -222,9 +232,28 @@ impl Plugin for ArpegiatorPlugin {
             let delta_frames = (change.timestamp() - self.current_time) as u16;
 
             match change {
-                SourceChange::NoteChange(_) => {
+                SourceChange::NoteChange(change) => {
                     // TODO note changed. for now we don't change anything, it's only when a pattern starts or ends
-                    // that we trigger anything
+                    // that we trigger anything. Forwarding CC optional
+                    match change {
+                        DeviceChange::AddNote { .. } => {}
+                        DeviceChange::RemoveNote { .. } => {}
+                        DeviceChange::NoteExpressionChange { .. } => {}
+                        DeviceChange::ReplaceNote { .. } => {}
+
+                        DeviceChange::CCChange { cc: _cc, time: _time } => {
+                            #[cfg(feature="forward_note_cc")]
+                            {
+                                let message = MidiMessageWithDelta {
+                                    delta_frames,
+                                    data: Into::<RawMessage>::into(_cc).into()
+                                };
+
+                                let _ = self.device_out.update(message, current_time, None);
+                            }
+                        }
+                        DeviceChange::None { .. } => {}
+                    }
                 }
                 SourceChange::PatternChange(change) => {
                     match change {
@@ -285,6 +314,17 @@ impl Plugin for ArpegiatorPlugin {
                             };
 
                             self.device_out.push_note_on(&new_pattern, note, current_time);
+                        }
+                        PatternDeviceChange::CC { cc: _cc, time: _time } => {
+                            #[cfg(feature="forward_pattern_cc")]
+                            {
+                                let message = MidiMessageWithDelta {
+                                    delta_frames,
+                                    data: Into::<RawMessage>::into(_cc).into()
+                                };
+
+                                let _ = self.device_out.update(message, current_time, None);
+                            }
                         }
                         PatternDeviceChange::None { .. } => {}
                     }

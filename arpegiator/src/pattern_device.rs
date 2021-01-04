@@ -6,6 +6,7 @@ use crate::pattern::Pattern;
 use crate::device::{DeviceChange, Expression};
 use crate::timed_event::TimedEvent;
 use std::cmp::Ordering;
+use util::messages::CC;
 
 
 #[derive(Default)]
@@ -19,6 +20,7 @@ pub enum PatternDeviceChange {
     PatternExpressionChange { time: usize, expression: Expression, pattern: Pattern },
     RemovePattern { time: usize, pattern: Pattern },
     ReplacePattern { time: usize, old_pattern: Pattern, new_pattern: Pattern },
+    CC { cc: CC, time: usize },
     None { time: usize },
 }
 
@@ -47,7 +49,8 @@ impl TimedEvent for PatternDeviceChange {
             PatternDeviceChange::PatternExpressionChange { time, .. } => *time,
             PatternDeviceChange::RemovePattern { time, .. } => *time,
             PatternDeviceChange::ReplacePattern { time, .. } => *time,
-            PatternDeviceChange::None { time, .. } => *time
+            PatternDeviceChange::None { time, .. } => *time,
+            PatternDeviceChange::CC { time, .. } => *time
         }
     }
 
@@ -57,7 +60,8 @@ impl TimedEvent for PatternDeviceChange {
             PatternDeviceChange::PatternExpressionChange { pattern, .. } => pattern.id,
             PatternDeviceChange::RemovePattern { pattern, .. } => pattern.id,
             PatternDeviceChange::ReplacePattern { new_pattern: pattern, .. } => pattern.id,
-            PatternDeviceChange::None { .. } => 0
+            PatternDeviceChange::CC { .. } => 0,
+            PatternDeviceChange::None { .. } => 0,
         }
     }
 }
@@ -110,7 +114,7 @@ impl PatternDevice {
                     }
                 }
             }
-            DeviceChange::CCChange { time, .. } => PatternDeviceChange::None { time },
+            DeviceChange::CCChange { time, cc } => PatternDeviceChange::CC { cc, time },
             DeviceChange::None { time } => PatternDeviceChange::None { time }
         }
     }
