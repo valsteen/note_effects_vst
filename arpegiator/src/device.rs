@@ -11,15 +11,18 @@ use std::cmp::Ordering;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 
 pub struct Device {
+    pub _name: String,
     pub notes: HashMap<NoteIndex, Note>,
     pub cc: HashMap<CCIndex, u8>,
     pub channels: [Channel; 16],
     pub note_index: usize,
 }
 
-impl Default for Device {
-    fn default() -> Self {
+
+impl Device {
+    pub fn new (name: String) -> Self {
         Device {
+            _name: name,
             notes: Default::default(),
             cc: Default::default(),
             channels: [Channel {
@@ -31,6 +34,7 @@ impl Default for Device {
         }
     }
 }
+
 
 #[derive(Copy, Clone, Debug)]
 pub struct Channel {
@@ -104,6 +108,9 @@ impl PartialEq for DeviceChange {
 impl Device {
     pub fn update(&mut self,
                   midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) -> DeviceChange {
+        #[cfg(feature="device_debug")]
+        info!("[{}] Got event: {:?} {:?} {:02X?}", self._name, id, current_time, midi_message);
+
         let time = current_time + midi_message.delta_frames as usize;
 
         match MidiMessageType::from(&midi_message.data) {

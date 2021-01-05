@@ -14,7 +14,6 @@ use crate::worker::WorkerCommand;
 use async_channel::Sender;
 
 
-#[derive(Default)]
 pub struct DeviceOut {
     pub device: Device,
     queue: Vec<MidiMessageWithDelta>,
@@ -22,6 +21,13 @@ pub struct DeviceOut {
 
 
 impl DeviceOut {
+    pub fn new(name: String) -> Self {
+        Self {
+            device: Device::new(name),
+            queue: vec![]
+        }
+    }
+
     pub fn update(&mut self, midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) {
         self.queue.push(midi_message);
         self.device.update(midi_message, current_time, id);
