@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{info, error};
+
 use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
@@ -23,9 +26,11 @@ impl ArpegiatorPatternReceiverParameters {
 
     fn update_port(&self) {
         let port = self.get_byte_parameter(Parameter::PortIndex);
-        self.socket_command.lock().unwrap().as_ref().unwrap().send(
+        if self.socket_command.lock().unwrap().as_ref().unwrap().send(
             SenderSocketCommand::SetPort(BASE_PORT + port as u16)
-        ).unwrap();
+        ).is_err() {
+            error!("Socket thread is shutdown, ignoring port change")
+        }
     }
 }
 

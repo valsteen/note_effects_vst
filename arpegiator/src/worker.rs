@@ -53,7 +53,9 @@ async fn spawn_socket_worker(port: u16,
         }
         Err(err) => {
             error!("Cannot bind on port {} : {:?}", port, err);
-            worker_result_sender.send(WorkerResult::SocketError(err)).await.unwrap();
+            if let Err(error) = worker_result_sender.send(WorkerResult::SocketError(err)).await {
+                error!("Main worker is shutdown - leaving socket worker");
+            }
             return;
         }
     };
@@ -110,7 +112,6 @@ async fn command_reader(command_receiver: Receiver<WorkerCommand>, worker_result
             },
             Err(err) => {
                 error!("Error while reading command channel: {}", err);
-                worker_result_sender.send(WorkerResult::ChannelError(err)).await.unwrap();
                 return
             }
         }

@@ -27,9 +27,11 @@ impl ArpegiatorParameters {
     pub fn update_port(&self) {
         let port = self.get_byte_parameter(Parameter::PortIndex) as u16 + BASE_PORT;
         info!("Applying parameter change: port={}", port);
-        self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
+        if let Err(error) = self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
             WorkerCommand::SetPort(port)
-        ).unwrap();
+        ) {
+            info!("main worker is shutdown - ignoring port change ({})", error);
+        }
     }
 }
 
