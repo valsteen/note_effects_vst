@@ -16,6 +16,7 @@ midir = "0.7.0"
 async-std = "1.8.0"
 async-channel = "1.5.1"
 futures-lite = "1.11.3"
+ipc-channel = "0.14.1"
 
 [build-dependencies]
 build-info-build = "0.0.20"
@@ -25,10 +26,15 @@ name = "arpegiator"
 crate-type = ["cdylib", "lib"]
 
 [features]
-#default = []
 default = ["use_channel_pressure", "forward_pattern_cc"]
 use_channel_pressure = []
 worker_debug = []
 forward_note_cc = []
 forward_pattern_cc = []
 device_debug = []
+
+[target.'cfg(target_os = "macos")'.dependencies.coremidi]
+version = "0.4.0"
+
+[target.'cfg(target_os = "macos")'.dependencies.mach]
+version = "0.3"

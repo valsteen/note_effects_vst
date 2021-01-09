@@ -1,14 +1,15 @@
 use log::info;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use util::constants::TIMBRECC;
-use util::midi_message_type::MidiMessageType;
-
-use crate::note::{CCIndex, Note, NoteIndex};
 use util::messages::CC;
-use crate::timed_event::TimedEvent;
-use std::cmp::Ordering;
+use util::midi_message_type::MidiMessageType;
 use util::midi_message_with_delta::MidiMessageWithDelta;
+
+use crate::midi_messages::note::{NoteIndex, Note, CCIndex};
+use crate::midi_messages::timed_event::TimedEvent;
+
 
 pub struct Device {
     pub _name: String,
@@ -113,7 +114,7 @@ impl Device {
 
         let time = current_time + midi_message.delta_frames as usize;
 
-        match MidiMessageType::from(&midi_message.data) {
+        match MidiMessageType::from(&midi_message.data.into()) {
             MidiMessageType::NoteOnMessage(note) => {
                 let note_id = match id {
                     None => {

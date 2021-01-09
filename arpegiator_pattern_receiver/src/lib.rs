@@ -1,6 +1,9 @@
-use std::thread::JoinHandle;
-
+use std::mem::take;
+use std::sync::Arc;
 use log::{info, error};
+
+use async_channel::Sender;
+
 use vst::api;
 use vst::buffer::AudioBuffer;
 use vst::event::Event;
@@ -8,15 +11,13 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use util::logging::logging_setup;
 use util::midi_message_with_delta::MidiMessageWithDelta;
-use crate::socket::{SenderSocketCommand, create_socket_thread};
-use std::mem::take;
+use util::ipc_payload::PatternPayload;
+
+use crate::ipc_worker::{IPCWorkerCommand, spawn_ipc_worker};
 use crate::parameters::ArpegiatorPatternReceiverParameters;
-use std::sync::Arc;
-use util::pattern_payload::PatternPayload;
-use std::sync::mpsc::Sender;
 
 mod parameters;
-mod socket;
+mod ipc_worker;
 
 #[macro_use]
 extern crate vst;
@@ -27,8 +28,7 @@ plugin_main!(ArpegiatorPatternReceiver);
 struct ArpegiatorPatternReceiver {
     #[allow(dead_code)]
     host: HostCallback,
-    socket_thread_handle: Option<JoinHandle<()>>,
-    socket_channel_sender: Option<Sender<SenderSocketCommand>>,
+    ipc_worker_sender: Option<Sender<IPCWorkerCommand>>,
     messages: Vec<MidiMessageWithDelta>,
     current_time: usize,
     parameters: Arc<ArpegiatorPatternReceiverParameters>
@@ -39,8 +39,7 @@ impl Default for ArpegiatorPatternReceiver {
     fn default() -> Self {
         ArpegiatorPatternReceiver {
             host: Default::default(),
-            socket_thread_handle: None,
-            socket_channel_sender: None,
+            ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
             parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
@@ -49,15 +48,11 @@ impl Default for ArpegiatorPatternReceiver {
 }
 
 impl ArpegiatorPatternReceiver {
-    fn close_socket(&mut self) {
-        if let Some(sender) = take(&mut self.socket_channel_sender) {
-            if let Err(e) = sender.send(SenderSocketCommand::Stop) {
-                error!("Error while closing sender channel : {:?} {}", e, e)
-            }
-        }
-
-        if let Some(thread_handle) = take(&mut self.socket_thread_handle) {
-            thread_handle.join().unwrap();
+    fn stop_worker(&mut self) {
+        if let Some(sender) = take(&mut self.ipc_worker_sender) {
+            sender.try_send(IPCWorkerCommand::Stop).unwrap_or_else(|err| {
+                error!("Error while closing sender channel : {}", err)
+            });
         }
     }
 }
@@ -87,18 +82,17 @@ impl Plugin for ArpegiatorPatternReceiver {
     fn resume(&mut self) {
         self.current_time = 0 ;
 
-        let (join_handle, sender) = create_socket_thread();
-        self.socket_thread_handle = Some(join_handle) ;
-        self.socket_channel_sender = Some(sender.clone());
-        sender.send(SenderSocketCommand::SetPort(self.parameters.get_port())).unwrap();
+        let sender= spawn_ipc_worker();
+        self.ipc_worker_sender = Some(sender.clone());
+        sender.try_send(IPCWorkerCommand::SetPort(self.parameters.get_port())).unwrap();
 
-        if let Ok(mut socket_command) = self.parameters.socket_command.lock() {
+        if let Ok(mut socket_command) = self.parameters.ipc_worker_sender.lock() {
             *socket_command = Some(sender);
         }
     }
 
     fn suspend(&mut self) {
-        self.close_socket()
+        self.stop_worker()
     }
 
     fn new(host: HostCallback) -> Self {
@@ -108,8 +102,7 @@ impl Plugin for ArpegiatorPatternReceiver {
 
         ArpegiatorPatternReceiver {
             host,
-            socket_thread_handle: None,
-            socket_channel_sender: None,
+            ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
             parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
@@ -136,29 +129,33 @@ impl Plugin for ArpegiatorPatternReceiver {
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         if !self.messages.is_empty() {
-            if let Some(sender) = &self.socket_channel_sender {
+            if let Some(ipc_worker_sender) = &self.ipc_worker_sender {
                 let payload = PatternPayload {
-                    time: self.current_time,
+                    #[cfg(target_os = "macos")]
+                    time: unsafe { mach::mach_time::mach_absolute_time() },
                     messages: take(&mut self.messages)
                 } ;
-                sender.send(SenderSocketCommand::Send(payload)).unwrap()
+                ipc_worker_sender.try_send(IPCWorkerCommand::Send(payload)).unwrap()
+            } else {
+                self.messages.clear();
             }
-            self.messages.clear();
         }
 
         self.current_time += buffer.samples()
     }
 
     fn process_events(&mut self, events: &api::Events) {
-        if self.socket_channel_sender.is_some() {
-            for e in events.events() {
-                if let Event::Midi(e) = e {
-                    self.messages.push( MidiMessageWithDelta {
-                        delta_frames: e.delta_frames as u16,
-                        data: e.data
-                    });
-                }
-            }
+        if self.ipc_worker_sender.is_some() {
+            self.messages.extend(events.events().map(|event| match event {
+                Event::Midi(event) => Ok(MidiMessageWithDelta {
+                    delta_frames: event.delta_frames as u16,
+                    data: event.data.into()
+                }),
+                Event::SysEx(_) => Err(()),
+                Event::Deprecated(_) => Err(())
+            }).filter(|item| item.is_ok()).map(|item| item.unwrap()));
+
+            //|midi_event| midi_event.unwrap())
         }
     }
 
@@ -169,6 +166,6 @@ impl Plugin for ArpegiatorPatternReceiver {
 
 impl Drop for ArpegiatorPatternReceiver {
     fn drop(&mut self) {
-        self.close_socket();
+        self.stop_worker();
     }
 }

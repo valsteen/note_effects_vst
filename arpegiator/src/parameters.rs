@@ -5,16 +5,46 @@ use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
 use util::parameters::ParameterConversion;
-use util::parameter_value_conversion::f32_to_byte;
-use crate::worker::WorkerCommand;
+use util::parameter_value_conversion::{f32_to_byte, f32_to_bool};
+use crate::workers::main_worker::WorkerCommand;
 use std::sync::Mutex;
 use async_channel::Sender;
+use util::duration_display;
 
 
-const PARAMETER_COUNT: usize = 1;
+pub const PARAMETER_COUNT: usize = 4;
 const BASE_PORT: u16 = 6000;
 
-pub struct ArpegiatorParameters {
+// 1 = Immediate - TODO : must be default
+// 0 = Off
+// highest = faster
+// lowest = slower
+// choose or configurable:
+// fixed time between start/end pitch
+// fixed time per semitone
+/*
+think about those cases:
+    large difference / small interval
+    small difference / large interval => weirdest
+
+    thus fixed time sounds weird, but the player can keep changing the target note, thus has the possibility to
+    influence the speed.
+    but then we need to reset the time at each change
+
+    also : velocity would influence pressure
+
+ */
+
+// note: if pitchbend is not off, it makes sense to consume note pitchbend as is
+// ideally while a note eposes its pitch and a pitchbend value, a method should directly tell the pitch in
+// millisemitones relative to 0 ( C-2 )
+enum PitchBendValues {
+    Off,  // no pitchbend, means same pitch until pattern ends
+    DurationToReachTarget(f32),
+    Immediate
+}
+
+pub(crate) struct ArpegiatorParameters {
     pub transfer: ParameterTransfer,
     pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>,
 }
@@ -39,12 +69,18 @@ impl ArpegiatorParameters {
 #[repr(i32)]
 pub enum Parameter {
     PortIndex = 0,
+    HoldNotes,  // a started pattern will find a note to play, even if no note is playing for that index
+    PatternLegato,  // pattern is not restarted if start/end match, and note is thus held
+    Pitchbend
 }
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
             0 => Parameter::PortIndex,
+            1 => Parameter::HoldNotes,
+            2 => Parameter::PatternLegato,
+            3 => Parameter::Pitchbend,
             _ => panic!("no such parameter {}", i),
         }
     }
@@ -70,19 +106,42 @@ impl ParameterConversion<Parameter> for ArpegiatorParameters {
 
 impl ArpegiatorParameters {
     pub fn new() -> Self {
-        ArpegiatorParameters {
+        let parameters = ArpegiatorParameters {
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
             worker_commands: Mutex::new(None),
-        }
+        };
+        parameters.set_parameter(Parameter::PatternLegato.into(), 1.);
+        parameters
     }
 }
 
 
 impl PluginParameters for ArpegiatorParameters {
     fn get_parameter_text(&self, index: i32) -> String {
-        match index.into() {
+        let parameter = index.into();
+        match parameter {
             Parameter::PortIndex => {
                 self.get_port().to_string()
+            }
+            Parameter::HoldNotes | Parameter::PatternLegato => {
+                match self.get_bool_parameter(parameter) {
+                    true => "On",
+                    false => "Off"
+                }.to_string()
+            }
+            Parameter::Pitchbend => {  // TODO set default to 1
+                match self.get_parameter(index) {
+                    x if x <= 0. => {
+                        "Immediate".into()
+                    }
+                    x if x >= 1. => {
+                        "Off".into()
+                    }
+                    _ => {
+                        let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 1., 80.);
+                        duration_display(value)
+                    }
+                }
             }
         }
     }
@@ -90,6 +149,9 @@ impl PluginParameters for ArpegiatorParameters {
     fn get_parameter_name(&self, index: i32) -> String {
         match index.into() {
             Parameter::PortIndex => "Port",
+            Parameter::HoldNotes => "Hold notes",
+            Parameter::PatternLegato => "Pattern Legato",
+            Parameter::Pitchbend => "Use pitchbend"
         }.to_string()
     }
 
@@ -98,7 +160,8 @@ impl PluginParameters for ArpegiatorParameters {
     }
 
     fn set_parameter(&self, index: i32, value: f32) {
-        match index.into() {
+        let parameter = index.into();
+        match parameter {
             Parameter::PortIndex => {
                 let new_value = f32_to_byte(value);
                 let old_value = self.get_byte_parameter(Parameter::PortIndex);
@@ -107,6 +170,14 @@ impl PluginParameters for ArpegiatorParameters {
                     self.update_port()
                 }
             }
+            Parameter::HoldNotes | Parameter::PatternLegato => {
+                let new_value = f32_to_bool(value);
+                let old_value = self.get_bool_parameter(parameter);
+                if old_value != new_value {
+                    self.transfer.set_parameter(index as usize, value);
+                }
+            }
+            Parameter::Pitchbend => self.transfer.set_parameter(index as usize, value)
         }
     }
 

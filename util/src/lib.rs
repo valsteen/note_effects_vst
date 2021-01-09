@@ -16,7 +16,7 @@ pub mod delayed_message_consumer;
 pub mod transmute_buffer;
 pub mod logging;
 pub mod midi_message_with_delta;
-pub mod pattern_payload;
+pub mod ipc_payload;
 
 #[derive(Default)]
 pub struct HostCallbackLock {

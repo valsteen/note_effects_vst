@@ -1,8 +1,8 @@
 use core::cmp::{Ordering, PartialEq, PartialOrd};
 use core::option::Option;
-use crate::device::DeviceChange;
-use crate::pattern_device::PatternDeviceChange;
-use crate::timed_event::TimedEvent;
+use crate::midi_messages::device::DeviceChange;
+use crate::midi_messages::pattern_device::PatternDeviceChange;
+use crate::midi_messages::timed_event::TimedEvent;
 
 pub enum SourceChange {
     NoteChange(DeviceChange),

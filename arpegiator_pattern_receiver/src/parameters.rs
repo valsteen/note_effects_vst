@@ -6,17 +6,18 @@ use vst::util::ParameterTransfer;
 
 use util::parameters::ParameterConversion;
 use util::parameter_value_conversion::f32_to_byte;
-use crate::socket::SenderSocketCommand;
+use crate::ipc_worker::IPCWorkerCommand;
 use std::sync::Mutex;
-use std::sync::mpsc::Sender;
+use async_channel::Sender;
+use std::error;
 
 
 const PARAMETER_COUNT: usize = 1;
 const BASE_PORT: u16 = 6000;
 
-pub struct ArpegiatorPatternReceiverParameters {
+pub(crate) struct ArpegiatorPatternReceiverParameters {
     pub transfer: ParameterTransfer,
-    pub socket_command: Mutex<Option<Sender<SenderSocketCommand>>>
+    pub ipc_worker_sender: Mutex<Option<Sender<IPCWorkerCommand>>>
 }
 
 impl ArpegiatorPatternReceiverParameters {
@@ -24,13 +25,12 @@ impl ArpegiatorPatternReceiverParameters {
         BASE_PORT + self.get_byte_parameter(Parameter::PortIndex) as u16
     }
 
-    fn update_port(&self) {
+    fn update_port(&self) -> Result<(), Box<dyn error::Error + '_>> {
         let port = self.get_byte_parameter(Parameter::PortIndex);
-        if self.socket_command.lock().unwrap().as_ref().unwrap().send(
-            SenderSocketCommand::SetPort(BASE_PORT + port as u16)
-        ).is_err() {
-            error!("Socket thread is shutdown, ignoring port change")
-        }
+        self.ipc_worker_sender.lock()?.as_ref().
+            ok_or("cannot unlock ipc worker sender mutex")?.
+            try_send(IPCWorkerCommand::SetPort(BASE_PORT + port as u16))?;
+        Ok(())
     }
 }
 
@@ -71,7 +71,7 @@ impl ArpegiatorPatternReceiverParameters {
     pub fn new() -> Self {
         ArpegiatorPatternReceiverParameters {
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
-            socket_command: Mutex::new(None)
+            ipc_worker_sender: Mutex::new(None)
         }
     }
 }
@@ -103,7 +103,9 @@ impl PluginParameters for ArpegiatorPatternReceiverParameters {
                 let old_value = self.get_byte_parameter(Parameter::PortIndex);
                 if old_value != new_value {
                     self.transfer.set_parameter(index as usize, value);
-                    self.update_port();
+                    self.update_port().unwrap_or_else(|err| {
+                        error!("Could not update port: {}", err);
+                    });
                 }
             }
         }
@@ -119,11 +121,15 @@ impl PluginParameters for ArpegiatorPatternReceiverParameters {
 
     fn load_preset_data(&self, data: &[u8]) {
         self.deserialize_state(data);
-        self.update_port()
+        self.update_port().unwrap_or_else(|err| {
+            error!("Could not update port: {}", err);
+        });
     }
 
     fn load_bank_data(&self, data: &[u8]) {
         self.deserialize_state(data);
-        self.update_port()
+        self.update_port().unwrap_or_else(|err| {
+            error!("Could not update port: {}", err);
+        });
     }
 }

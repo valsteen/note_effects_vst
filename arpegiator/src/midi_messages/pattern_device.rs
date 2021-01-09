@@ -1,12 +1,12 @@
 use log::error;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 
-use crate::pattern::Pattern;
-use crate::device::{DeviceChange, Expression};
-use crate::timed_event::TimedEvent;
-use std::cmp::Ordering;
 use util::messages::CC;
+use crate::midi_messages::device::{DeviceChange, Expression};
+use crate::midi_messages::pattern::Pattern;
+use crate::midi_messages::timed_event::TimedEvent;
 
 
 #[derive(Default)]

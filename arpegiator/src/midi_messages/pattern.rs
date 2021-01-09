@@ -1,5 +1,5 @@
-use crate::note::Note;
-use crate::timed_event::TimedEvent;
+use crate::midi_messages::note::Note;
+use crate::midi_messages::timed_event::TimedEvent;
 
 pub const C3: u8 = 60 ;
 

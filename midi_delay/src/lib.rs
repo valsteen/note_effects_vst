@@ -50,7 +50,7 @@ impl MidiDelay {
     }
 
     #[allow(dead_code)]
-    fn seconds_per_sample(&self) -> f32 {
+    fn samples_to_seconds(&self) -> f32 {
         1.0 / self.sample_rate
     }
 

@@ -1,20 +1,21 @@
 #[allow(unused_imports)]
 use log::{error, info};
 
+use async_channel::Sender;
+use std::mem::take;
+
 use util::messages::NoteOff;
+use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
 
-use crate::device::Device;
-use crate::expressive_note::ExpressiveNote;
-use crate::note::Note;
-use crate::pattern::Pattern;
-use util::midi_message_with_delta::MidiMessageWithDelta;
-use crate::midi_controller_worker::ControllerCommand;
-use crate::worker::WorkerCommand;
-use async_channel::Sender;
+use crate::midi_messages::device::Device;
+use crate::midi_messages::expressive_note::ExpressiveNote;
+use crate::midi_messages::pattern::Pattern;
+use crate::midi_messages::note::Note;
+use crate::workers::main_worker::WorkerCommand;
 
 
-pub struct DeviceOut {
+pub(crate) struct DeviceOut {
     pub device: Device,
     queue: Vec<MidiMessageWithDelta>,
 }
@@ -33,13 +34,15 @@ impl DeviceOut {
         self.device.update(midi_message, current_time, id);
     }
 
-    pub fn flush_to(&mut self, midi_controller_sender: &Sender<WorkerCommand>) {
-        for message in self.queue.drain(..) {
-            if let Err(err) = midi_controller_sender.try_send(
-                WorkerCommand::SendToController(ControllerCommand::RawMessage(RawMessage::from(message.data)))) {
-                error!("Could not send to the controller worker {}", err)
-            }
+    pub fn flush_to(&mut self, buffer_start_time: u64, midi_output_sender: &Sender<WorkerCommand>) {
+        if self.queue.is_empty() {
+            return
         }
+        midi_output_sender.try_send(
+            WorkerCommand::SendToMidiOutput { buffer_start_time, messages: take(&mut self.queue)
+            }).unwrap_or_else(
+            |err| error!("Could not send to the controller worker {}", err)
+        );
     }
 
     pub fn push_note_off(&mut self, note_id: usize, velocity_off: u8, delta_frames: u16, current_time: usize) {
@@ -59,7 +62,7 @@ impl DeviceOut {
 
         self.update(MidiMessageWithDelta {
             delta_frames,
-            data: raw_message.into(),
+            data: raw_message,
         }, current_time, None);
     }
 
@@ -80,7 +83,7 @@ impl DeviceOut {
             self.update(
                 MidiMessageWithDelta {
                     delta_frames: (pattern.pressed_at - current_time) as u16,
-                    data: raw_message.into(),
+                    data: raw_message,
                 },
                 current_time,
                 Some(pattern.id),
