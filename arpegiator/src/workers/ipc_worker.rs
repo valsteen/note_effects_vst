@@ -106,7 +106,9 @@ pub(crate) fn spawn_ipc_worker(port: u16,
             match command {
                 IPCWorkerCommand::SocketReceive(ipc_receiver_from_socket) => {
                     if ipc_receiver_sender.is_some() {
-                        close_ipc_receiver_thread(take(&mut ipc_receiver_sender).unwrap());
+                        if let Err(err) = close_ipc_receiver_thread(take(&mut ipc_receiver_sender).unwrap()) {
+                            error!("Error while shutting down ipc receiver worker {}", err)
+                        }
                     }
 
                     let ipc_worker_sender = ipc_worker_sender.clone();
