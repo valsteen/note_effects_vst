@@ -25,12 +25,13 @@ use crate::system::second_to_mach_timebase;
 use async_std::io::ErrorKind;
 use std::io::Error;
 use std::error;
+use util::system::Uuid;
 
 
 #[derive(Debug)]
 pub(crate) enum MidiOutputWorkerCommand {
     SendToController { buffer_start_time: u64, messages: Vec<MidiMessageWithDelta> },
-    Stop,
+    Stop(Sender<()>, Uuid),
     SetSampleRate(f32)
 }
 
@@ -101,8 +102,11 @@ pub(crate) fn spawn_midi_output_worker(name: String) ->
                         source.received(&buffer).unwrap();
                     }
                 }
-                MidiOutputWorkerCommand::Stop => {
-                    info!("Stopping controller {}", name);
+                MidiOutputWorkerCommand::Stop(sender, event_id) => {
+                    match sender.send(()).await {
+                        Ok(_) => { info!("[{}] Stopping controller {}", event_id, name); }
+                        Err(err) => { info!("[{}] Error while quitting midi out {}: {}", event_id, name, err); }
+                    }
                     return;
                 }
                 MidiOutputWorkerCommand::SetSampleRate(rate) => {

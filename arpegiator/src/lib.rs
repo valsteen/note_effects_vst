@@ -25,6 +25,7 @@ use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT};
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
 use crate::midi_messages::timed_event::TimedEvent;
+use util::system::Uuid;
 
 mod midi_messages;
 mod workers;
@@ -51,17 +52,19 @@ pub struct ArpegiatorPlugin {
     device_out: DeviceOut,
     parameters: Arc<ArpegiatorParameters>,
     worker_channels: Option<WorkerChannels>,
+    resumed: bool
 }
 
 
 impl ArpegiatorPlugin {
-    fn close_worker(&mut self) {
+    fn close_worker(&mut self, event_id: Uuid) {
         if let Some(worker_channels) = take(&mut self.worker_channels) {
-            if let Err(e) = worker_channels.command_sender.try_send(WorkerCommand::Stop) {
-                error!("Error while closing worker channel : {:?}", e)
+            #[cfg(feature = "worker_debug")] info!("[{}] stopping workers", event_id);
+            if let Err(e) = worker_channels.command_sender.try_send(WorkerCommand::Stop(event_id)) {
+                error!("[{}] Error while closing worker channel : {:?}", event_id, e)
             }
             if let Err(err) = worker_channels.worker.join() {
-                error!("Error while waiting for worker thread to finish {:?}", err)
+                error!("[{}] Error while waiting for worker thread to finish {:?}", event_id, err)
             }
         }
     }
@@ -82,6 +85,7 @@ impl Default for ArpegiatorPlugin {
             device_out: DeviceOut::new("Out".to_string()),
             parameters: Arc::new(ArpegiatorParameters::new()),
             worker_channels: None,
+            resumed: false
         }
     }
 }
@@ -139,28 +143,57 @@ impl Plugin for ArpegiatorPlugin {
             device_out: DeviceOut::new("Out".to_string()),
             parameters: Arc::new(ArpegiatorParameters::new()),
             worker_channels: None,
+            resumed: false
         }
     }
 
     fn resume(&mut self) {
-        self.close_worker();
+        if self.resumed {
+            info!("Already resumed");
+            return;
+        }
+        self.resumed = true;
+
+        let event_id = Uuid::new_v4() ;
+
+        #[cfg(feature = "worker_debug")] info!("[{}] resume: enter", event_id);
+        self.close_worker(event_id);
 
         self.current_time_in_samples = 0;
 
         let worker_channels = create_worker_thread();
-
-        worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port())).unwrap();
+        worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port(), event_id)).unwrap();
         worker_channels.command_sender.try_send(WorkerCommand::SetSampleRate(self.sample_rate)).unwrap();
 
-        if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
-            *worker_commands = Some(worker_channels.command_sender.clone());
-        }
+        self.worker_channels = match self.parameters.worker_commands.lock() {
+            Ok(mut worker_commands) => {
+                *worker_commands = Some(worker_channels.command_sender.clone());
+                Some(worker_channels)
+            }
+            Err(err) => {
+                error!("[{}] Could not get parameters lock: {}", event_id, err);
+                None
+            }
+        };
 
-        self.worker_channels = Some(worker_channels);
+        #[cfg(feature = "worker_debug")] info!("[{}] resume: exit", event_id);
     }
 
     fn suspend(&mut self) {
-        self.close_worker()
+        if !self.resumed {
+            info!("Already suspended");
+            return;
+        }
+        let event_id = Uuid::new_v4();
+
+        self.resumed = false;
+        #[cfg(feature = "worker_debug")] info!("[{}] suspend enter", event_id);
+        if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
+            *worker_commands = None
+        }
+
+        self.close_worker(event_id);
+        #[cfg(feature = "worker_debug")] info!("[{}] suspend exit", event_id);
     }
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
@@ -387,6 +420,8 @@ impl Plugin for ArpegiatorPlugin {
 
 impl Drop for ArpegiatorPlugin {
     fn drop(&mut self) {
-        self.close_worker();
+        let event_id = Uuid::new_v4();
+        info!("[{}] Dropping plugin", event_id);
+        self.close_worker(event_id);
     }
 }

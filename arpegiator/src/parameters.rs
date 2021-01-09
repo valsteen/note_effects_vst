@@ -10,6 +10,7 @@ use crate::workers::main_worker::WorkerCommand;
 use std::sync::Mutex;
 use async_channel::Sender;
 use util::duration_display;
+use util::system::Uuid;
 
 
 pub const PARAMETER_COUNT: usize = 4;
@@ -54,13 +55,13 @@ impl ArpegiatorParameters {
         BASE_PORT + self.get_byte_parameter(Parameter::PortIndex) as u16
     }
 
-    pub fn update_port(&self) {
+    pub fn update_port(&self, event_id: Uuid) {
         let port = self.get_byte_parameter(Parameter::PortIndex) as u16 + BASE_PORT;
         info!("Applying parameter change: port={}", port);
         if let Err(error) = self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
-            WorkerCommand::SetPort(port)
+            WorkerCommand::SetPort(port, event_id)
         ) {
-            info!("main worker is shutdown - ignoring port change ({})", error);
+            info!("[{}] main worker is shutdown - ignoring port change ({})", event_id, error);
         }
     }
 }
@@ -166,8 +167,10 @@ impl PluginParameters for ArpegiatorParameters {
                 let new_value = f32_to_byte(value);
                 let old_value = self.get_byte_parameter(Parameter::PortIndex);
                 if old_value != new_value {
+                    let event_id = Uuid::new_v4();
+                    info!("[{}] set parameter port {}", event_id, BASE_PORT + new_value as u16);
                     self.transfer.set_parameter(index as usize, value);
-                    self.update_port()
+                    self.update_port(event_id)
                 }
             }
             Parameter::HoldNotes | Parameter::PatternLegato => {
@@ -190,12 +193,16 @@ impl PluginParameters for ArpegiatorParameters {
     }
 
     fn load_preset_data(&self, data: &[u8]) {
+        let event_id = Uuid::new_v4();
+        info!("[{}] Load present data", event_id);
         self.deserialize_state(data);
-        self.update_port()
+        self.update_port(event_id)
     }
 
     fn load_bank_data(&self, data: &[u8]) {
+        let event_id = Uuid::new_v4();
+        info!("[{}] Load bank data", event_id);
         self.deserialize_state(data);
-        self.update_port()
+        self.update_port(event_id)
     }
 }

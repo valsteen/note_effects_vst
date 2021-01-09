@@ -13,6 +13,7 @@ build-info = "0.0.20"
 serde = "1.0.118"
 ipc-channel = "0.14.1"
 async-channel = "1.5.1"
+uuid = "0.8.1"
 
 [dependencies.log-panics]
 version = "2.0.0"

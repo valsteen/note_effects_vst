@@ -70,6 +70,7 @@ dependencies = [
  "midir",
  "num-traits",
  "util",
+ "uuid",
  "vst",
 ]
 
@@ -1506,6 +1507,7 @@ dependencies = [
  "log-panics",
  "serde",
  "simplelog",
+ "uuid",
  "vst",
 ]
 
