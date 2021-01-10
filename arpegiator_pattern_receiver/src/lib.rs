@@ -3,21 +3,23 @@ use {
     std::mem::take,
     log::{info, error},
     async_channel::Sender,
-    vst::event::Event
+    vst::event::Event,
+    vst::buffer::SendEventBuffer,
+    vst::api::MidiEvent
 };
 use std::sync::Arc;
 
 use vst::api;
-use vst::buffer::AudioBuffer;
+use vst::buffer::{AudioBuffer};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use util::logging::logging_setup;
-use util::midi_message_with_delta::MidiMessageWithDelta;
 
 #[cfg(not(feature="midi_hack_transmission"))]
 use {
     util::ipc_payload::PatternPayload,
-    crate::ipc_worker::{IPCWorkerCommand, spawn_ipc_worker}
+    crate::ipc_worker::{IPCWorkerCommand, spawn_ipc_worker},
+    util::midi_message_with_delta::MidiMessageWithDelta
 };
 
 use crate::parameters::{ArpegiatorPatternReceiverParameters, PARAMETER_COUNT};
@@ -34,9 +36,14 @@ plugin_main!(ArpegiatorPatternReceiver);
 struct ArpegiatorPatternReceiver {
     #[allow(dead_code)]
     host: HostCallback,
+    #[cfg(feature = "midi_hack_transmission")]
+    send_buffer: SendEventBuffer,
     #[cfg(not(feature="midi_hack_transmission"))]
     ipc_worker_sender: Option<Sender<IPCWorkerCommand>>,
+    #[cfg(not(feature="midi_hack_transmission"))]
     messages: Vec<MidiMessageWithDelta>,
+    #[cfg(feature="midi_hack_transmission")]
+    messages: Vec<vst::event::MidiEvent>,
     current_time: usize,
     resumed: bool,
     parameters: Arc<ArpegiatorPatternReceiverParameters>
@@ -52,7 +59,9 @@ impl Default for ArpegiatorPatternReceiver {
             messages: vec![],
             current_time: 0,
             resumed: false,
-            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
+            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new()),
+            #[cfg(feature="midi_hack_transmission")]
+            send_buffer: Default::default()
         }
     }
 }
@@ -138,7 +147,9 @@ impl Plugin for ArpegiatorPatternReceiver {
             messages: vec![],
             current_time: 0,
             resumed: false,
-            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
+            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new()),
+            #[cfg(feature="midi_hack_transmission")]
+            send_buffer: Default::default()
         }
     }
 
@@ -178,7 +189,8 @@ impl Plugin for ArpegiatorPatternReceiver {
 
             #[cfg(feature="midi_hack_transmission")]
             {
-                // TODO
+                self.send_buffer.send_events(&self.messages, &mut self.host);
+                self.messages.clear()
             }
         }
 
@@ -187,21 +199,19 @@ impl Plugin for ArpegiatorPatternReceiver {
 
     fn process_events(&mut self, events: &api::Events) {
         #[cfg(not(feature="midi_hack_transmission"))]
-        if self.ipc_worker_sender.is_some() {
-            self.messages.extend(events.events().map(|event| match event {
-                Event::Midi(event) => Ok(MidiMessageWithDelta {
-                    delta_frames: event.delta_frames as u16,
-                    data: event.data.into()
-                }),
-                Event::SysEx(_) => Err(()),
-                Event::Deprecated(_) => Err(())
-            }).filter(|item| item.is_ok()).map(|item| item.unwrap()));
+        if self.ipc_worker_sender.is_none() {
+            return;
         }
 
-        #[cfg(feature="midi_hack_transmission")]
-        {
-            // TODO
-        }
+        self.messages.extend(events.events().map(|event| match event {
+            #[allow(unused_mut)]
+            Event::Midi(mut event) => Ok(MidiMessageWithDelta {
+                delta_frames: event.delta_frames as u16,
+                data: event.data.into()
+            }),
+            Event::SysEx(_) => Err(()),
+            Event::Deprecated(_) => Err(())
+        }).filter(|item| item.is_ok()).map(|item| item.unwrap()));
     }
 
     fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {

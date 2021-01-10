@@ -57,6 +57,7 @@ plugin_main!(ArpegiatorPlugin);
 pub struct ArpegiatorPlugin {
     events: Vec<MidiEvent>,
     _host: HostCallback,
+    #[cfg(feature = "midi_hack_transmission")]
     send_buffer: SendEventBuffer,
     pattern_device_in: Device,
     notes_device_in: Device,
@@ -93,6 +94,7 @@ impl Default for ArpegiatorPlugin {
         ArpegiatorPlugin {
             events: vec![],
             _host: Default::default(),
+            #[cfg(feature = "midi_hack_transmission")]
             send_buffer: Default::default(),
             pattern_device_in: Device::new("Patterns".to_string()),
             notes_device_in: Device::new("Notes".to_string()),
@@ -153,6 +155,7 @@ impl Plugin for ArpegiatorPlugin {
         ArpegiatorPlugin {
             events: vec![],
             _host: host,
+            #[cfg(feature = "midi_hack_transmission")]
             send_buffer: Default::default(),
             pattern_device_in: Device::new("Pattern".to_string()),
             notes_device_in: Device::new("Notes".to_string()),
@@ -248,10 +251,14 @@ impl Plugin for ArpegiatorPlugin {
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         #[cfg(not(feature = "midi_hack_transmission"))]
-        {
-            #[cfg(target_os = "macos")] let local_time = unsafe { mach_absolute_time() };
-            #[cfg(target_os = "linux")] let local_time = 0;
-            let pattern_messages = match self.worker_channels.as_ref() {
+        let local_time = {
+            #[cfg(target_os = "macos")] unsafe { mach_absolute_time() }
+            #[cfg(target_os = "linux")] 0
+        };
+
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        let pattern_messages = {
+            match self.worker_channels.as_ref() {
                 None => vec![],
                 Some(socket_channels) => {
                     match socket_channels.pattern_receiver.try_recv() {
@@ -264,8 +271,10 @@ impl Plugin for ArpegiatorPlugin {
                         Err(_) => vec![]
                     }
                 }
-            };
-        }
+            }
+        };
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        let events = &self.events;
 
 
         // from here we cannot accurately tell when the buffer we're building will actually play
@@ -279,7 +288,17 @@ impl Plugin for ArpegiatorPlugin {
         let notes_device_in = &mut self.notes_device_in;
 
         #[cfg(feature = "midi_hack_transmission")]
-        let pattern_messages = vec![] ; // TODO
+        let (events, pattern_messages) : (Vec<MidiEvent>, Vec<MidiMessageWithDelta>) = {
+            let (mut events, mut patterns) : (Vec<MidiEvent>, Vec<MidiEvent>) = self.events.drain(..).partition(
+                |item| item.data[0] < 0x80);
+            events.sort_by_key(|x| x.delta_frames);
+            patterns.sort_by_key(|x| x.delta_frames);
+            let patterns = patterns.iter().map(|event| MidiMessageWithDelta {
+                delta_frames: event.delta_frames as u16,
+                data: RawMessage::from([event.data[0] + 0x80, event.data[1], event.data[2]])
+            }).collect_vec();
+            (events, patterns)
+        };
 
         let pattern_changes = pattern_messages.into_iter().map(|message| {
             let change = pattern_device_in.update(message, current_time_in_samples, None);
@@ -287,7 +306,7 @@ impl Plugin for ArpegiatorPlugin {
             SourceChange::PatternChange(change)
         });
 
-        let note_changes = self.events.iter().map(|event| {
+        let note_changes = events.iter().map(|event| {
             let midi_message_with_delta = MidiMessageWithDelta {
                 delta_frames: event.delta_frames as u16,
                 data: event.data.into(),
@@ -401,12 +420,12 @@ impl Plugin for ArpegiatorPlugin {
                     }
                 }
             }
-
-            #[cfg(not(feature = "midi_hack_transmission"))]
-            if let Some(worker_channels) = self.worker_channels.as_ref() {
-                self.device_out.flush_to(local_time, &worker_channels.command_sender)
-            }
         };
+
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        if let Some(worker_channels) = self.worker_channels.as_ref() {
+            self.device_out.flush_to(local_time, &worker_channels.command_sender)
+        }
 
         // TODO
         //self.send_buffer.send_events(events, &mut self._host);
@@ -436,7 +455,6 @@ impl Plugin for ArpegiatorPlugin {
     fn process_events(&mut self, events: &api::Events) {
         for e in events.events() {
             if let Event::Midi(e) = e {
-                // TODO separate patterns and notes
                 self.events.push(e);
             }
         }

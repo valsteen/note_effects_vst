@@ -70,7 +70,7 @@ pub trait ParameterConversion<ParameterType>
     }
 
     fn deserialize_state(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
+        for (i, item) in data.iter().enumerate().take_while(|(i,_)| *i < Self::get_parameter_count()) {
             self.set_byte_parameter((i as i32).into(), *item);
         }
     }
