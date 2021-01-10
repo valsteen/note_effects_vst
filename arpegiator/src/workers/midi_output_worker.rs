@@ -101,7 +101,8 @@ pub(crate) fn spawn_midi_output_worker(name: String) ->
                     {
                         // we cannot accurately tell when those notes should be played, we just know when it was
                         // received and the earliest time being reception + time that represents a buffer
-                        let play_time = reception_time + block_duration;
+                        //let play_time = reception_time + block_duration;
+                        let play_time = reception_time ;
                         let message = messages.remove(0);
                         let mut buffer = PacketBuffer::new(
                             message.delta_frames as u64 * sample_to_mach + play_time,

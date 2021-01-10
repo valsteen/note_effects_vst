@@ -2,6 +2,7 @@
 
 ARTEFACT_DIRECTORY=artefact
 LIB_PATH_PREFIX=target/release/
+#LIB_PATH_PREFIX=target/debug/
 
 for BUNDLE_LIB in "NoteGenerator note_generator" "NoteOffDelay note_off_delay" "FilterOutNonNote filter_out_non_note" \
  " NoteFanOut note_fan_out" "MidiDelay midi_delay" "MaxNoteDuration max_note_duration" "AudioData audio_data" \

@@ -26,3 +26,10 @@ crate-type = ["cdylib", "lib"]
 
 [target.'cfg(target_os = "macos")'.dependencies.mach]
 version = "0.3"
+
+[features]
+# this transmits midi via the vst output instead of using an IPC, setting the highest bit to 0 so we transmit
+# midi messages in the range 0x00-0x7F and it does not interfer with any other message. Somehow bitwig just passes
+# those messages while sysex are being blocked.
+default = ["midi_hack_transmission"]
+midi_hack_transmission = []

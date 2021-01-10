@@ -1,23 +1,29 @@
-use std::mem::take;
+#[allow(unused_imports)]
+use {
+    std::mem::take,
+    log::{info, error},
+    async_channel::Sender,
+    vst::event::Event
+};
 use std::sync::Arc;
-use log::{info, error};
-
-use async_channel::Sender;
 
 use vst::api;
 use vst::buffer::AudioBuffer;
-use vst::event::Event;
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use util::logging::logging_setup;
 use util::midi_message_with_delta::MidiMessageWithDelta;
-use util::ipc_payload::PatternPayload;
 
-use crate::ipc_worker::{IPCWorkerCommand, spawn_ipc_worker};
-use crate::parameters::ArpegiatorPatternReceiverParameters;
+#[cfg(not(feature="midi_hack_transmission"))]
+use {
+    util::ipc_payload::PatternPayload,
+    crate::ipc_worker::{IPCWorkerCommand, spawn_ipc_worker}
+};
+
+use crate::parameters::{ArpegiatorPatternReceiverParameters, PARAMETER_COUNT};
 
 mod parameters;
-mod ipc_worker;
+#[cfg(not(feature="midi_hack_transmission"))] mod ipc_worker;
 
 #[macro_use]
 extern crate vst;
@@ -28,6 +34,7 @@ plugin_main!(ArpegiatorPatternReceiver);
 struct ArpegiatorPatternReceiver {
     #[allow(dead_code)]
     host: HostCallback,
+    #[cfg(not(feature="midi_hack_transmission"))]
     ipc_worker_sender: Option<Sender<IPCWorkerCommand>>,
     messages: Vec<MidiMessageWithDelta>,
     current_time: usize,
@@ -40,6 +47,7 @@ impl Default for ArpegiatorPatternReceiver {
     fn default() -> Self {
         ArpegiatorPatternReceiver {
             host: Default::default(),
+            #[cfg(not(feature="midi_hack_transmission"))]
             ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
@@ -50,6 +58,7 @@ impl Default for ArpegiatorPatternReceiver {
 }
 
 impl ArpegiatorPatternReceiver {
+    #[cfg(not(feature="midi_hack_transmission"))]
     fn stop_worker(&mut self) {
         if let Some(sender) = take(&mut self.ipc_worker_sender) {
             sender.try_send(IPCWorkerCommand::Stop).unwrap_or_else(|err| {
@@ -67,7 +76,7 @@ impl Plugin for ArpegiatorPatternReceiver {
             name: "Arpegiator Pattern Receiver".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 342112720,
-            parameters: 1,
+            parameters: PARAMETER_COUNT as i32,
             category: Category::Synth,
             initial_delay: 0,
             version: 2,
@@ -90,15 +99,18 @@ impl Plugin for ArpegiatorPatternReceiver {
 
         self.current_time = 0 ;
 
-        self.stop_worker();
+        #[cfg(not(feature="midi_hack_transmission"))]
+        {
+            self.stop_worker();
 
-        let sender= spawn_ipc_worker();
+            let sender= spawn_ipc_worker();
 
-        self.ipc_worker_sender = Some(sender.clone());
-        sender.try_send(IPCWorkerCommand::SetPort(self.parameters.get_port())).unwrap();
+            self.ipc_worker_sender = Some(sender.clone());
+            sender.try_send(IPCWorkerCommand::SetPort(self.parameters.get_port())).unwrap();
 
-        if let Ok(mut socket_command) = self.parameters.ipc_worker_sender.lock() {
-            *socket_command = Some(sender);
+            if let Ok(mut socket_command) = self.parameters.ipc_worker_sender.lock() {
+                *socket_command = Some(sender);
+            }
         }
     }
 
@@ -107,7 +119,11 @@ impl Plugin for ArpegiatorPatternReceiver {
             return;
         }
         self.resumed = false;
-        self.stop_worker()
+
+        #[cfg(not(feature="midi_hack_transmission"))]
+        {
+            self.stop_worker()
+        }
     }
 
     fn new(host: HostCallback) -> Self {
@@ -117,6 +133,7 @@ impl Plugin for ArpegiatorPatternReceiver {
 
         ArpegiatorPatternReceiver {
             host,
+            #[cfg(not(feature="midi_hack_transmission"))]
             ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
@@ -145,6 +162,7 @@ impl Plugin for ArpegiatorPatternReceiver {
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         if !self.messages.is_empty() {
+            #[cfg(not(feature="midi_hack_transmission"))]
             if let Some(ipc_worker_sender) = &self.ipc_worker_sender {
                 let payload = PatternPayload {
                     time: {
@@ -157,12 +175,18 @@ impl Plugin for ArpegiatorPatternReceiver {
             } else {
                 self.messages.clear();
             }
+
+            #[cfg(feature="midi_hack_transmission")]
+            {
+                // TODO
+            }
         }
 
         self.current_time += buffer.samples()
     }
 
     fn process_events(&mut self, events: &api::Events) {
+        #[cfg(not(feature="midi_hack_transmission"))]
         if self.ipc_worker_sender.is_some() {
             self.messages.extend(events.events().map(|event| match event {
                 Event::Midi(event) => Ok(MidiMessageWithDelta {
@@ -172,8 +196,11 @@ impl Plugin for ArpegiatorPatternReceiver {
                 Event::SysEx(_) => Err(()),
                 Event::Deprecated(_) => Err(())
             }).filter(|item| item.is_ok()).map(|item| item.unwrap()));
+        }
 
-            //|midi_event| midi_event.unwrap())
+        #[cfg(feature="midi_hack_transmission")]
+        {
+            // TODO
         }
     }
 
@@ -184,6 +211,9 @@ impl Plugin for ArpegiatorPatternReceiver {
 
 impl Drop for ArpegiatorPatternReceiver {
     fn drop(&mut self) {
-        self.stop_worker();
+        #[cfg(not(feature="midi_hack_transmission"))]
+        {
+            self.stop_worker();
+        }
     }
 }

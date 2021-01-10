@@ -1,8 +1,9 @@
 #[allow(unused_imports)]
-use log::{error, info};
-
-use async_channel::Sender;
-use std::mem::take;
+use {
+    log::{error, info},
+    async_channel::Sender,
+    std::mem::take
+};
 
 use util::messages::NoteOff;
 use util::midi_message_with_delta::MidiMessageWithDelta;
@@ -12,12 +13,12 @@ use crate::midi_messages::device::Device;
 use crate::midi_messages::expressive_note::ExpressiveNote;
 use crate::midi_messages::pattern::Pattern;
 use crate::midi_messages::note::Note;
-use crate::workers::main_worker::WorkerCommand;
+#[cfg(not(feature="midi_hack_transmission"))] use crate::workers::main_worker::WorkerCommand;
 
 
 pub(crate) struct DeviceOut {
     pub device: Device,
-    queue: Vec<MidiMessageWithDelta>,
+    pub queue: Vec<MidiMessageWithDelta>,
 }
 
 
@@ -34,16 +35,20 @@ impl DeviceOut {
         self.device.update(midi_message, current_time, id);
     }
 
+    #[cfg(not(feature="midi_hack_transmission"))]
     pub fn flush_to(&mut self, reception_time: u64, midi_output_sender: &Sender<WorkerCommand>) {
         if self.queue.is_empty() {
             return
         }
-        midi_output_sender.try_send(
-            WorkerCommand::SendToMidiOutput {
-                reception_time, messages: take(&mut self.queue)
-            }).unwrap_or_else(
-            |err| error!("Could not send to the controller worker {}", err)
-        );
+
+        {
+            midi_output_sender.try_send(
+                WorkerCommand::SendToMidiOutput {
+                    reception_time, messages: take(&mut self.queue)
+                }).unwrap_or_else(
+                |err| error!("Could not send to the controller worker {}", err)
+            );
+        }
     }
 
     pub fn push_note_off(&mut self, note_id: usize, velocity_off: u8, delta_frames: u16, current_time: usize) {

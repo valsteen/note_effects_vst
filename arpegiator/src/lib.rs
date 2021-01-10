@@ -1,11 +1,15 @@
-use std::mem::take;
+#[allow(unused_imports)]
+use {
+    std::mem::take,
+    log::{error, info}
+};
+
 use std::os::raw::c_void;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use log::{error, info};
 use vst::api;
-use vst::buffer::AudioBuffer;
+use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
@@ -19,18 +23,27 @@ use util::messages::AfterTouch;
 use util::messages::Pressure;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
-use workers::main_worker::{create_worker_thread, WorkerChannels, WorkerCommand};
+#[cfg(not(feature="midi_hack_transmission"))]
+use {
+    workers::main_worker::{create_worker_thread, WorkerChannels, WorkerCommand},
+};
+
+#[cfg(not(feature="midi_hack_transmission"))]
+#[cfg(target_os = "macos")]
+use {
+    mach::mach_time::mach_absolute_time
+};
 
 use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT};
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
 use util::system::Uuid;
-#[cfg(target_os = "macos")] use mach::mach_time::mach_absolute_time;
 use crate::midi_messages::timed_event::TimedEvent;
 
+#[cfg(not(feature="midi_hack_transmission"))] mod workers;
+#[cfg(not(feature="midi_hack_transmission"))] mod system;
+
 mod midi_messages;
-mod workers;
-mod system;
 mod parameters;
 
 
@@ -44,6 +57,7 @@ plugin_main!(ArpegiatorPlugin);
 pub struct ArpegiatorPlugin {
     events: Vec<MidiEvent>,
     _host: HostCallback,
+    send_buffer: SendEventBuffer,
     pattern_device_in: Device,
     notes_device_in: Device,
     pattern_device: PatternDevice,
@@ -52,12 +66,14 @@ pub struct ArpegiatorPlugin {
     block_size: i64,
     device_out: DeviceOut,
     parameters: Arc<ArpegiatorParameters>,
+    #[cfg(not(feature = "midi_hack_transmission"))]
     worker_channels: Option<WorkerChannels>,
-    resumed: bool
+    resumed: bool,
 }
 
 
 impl ArpegiatorPlugin {
+    #[cfg(not(feature = "midi_hack_transmission"))]
     fn close_worker(&mut self, event_id: Uuid) {
         if let Some(worker_channels) = take(&mut self.worker_channels) {
             #[cfg(feature = "worker_debug")] info!("[{}] stopping workers", event_id);
@@ -77,6 +93,7 @@ impl Default for ArpegiatorPlugin {
         ArpegiatorPlugin {
             events: vec![],
             _host: Default::default(),
+            send_buffer: Default::default(),
             pattern_device_in: Device::new("Patterns".to_string()),
             notes_device_in: Device::new("Notes".to_string()),
             pattern_device: PatternDevice::default(),
@@ -85,8 +102,9 @@ impl Default for ArpegiatorPlugin {
             block_size: 64,
             device_out: DeviceOut::new("Out".to_string()),
             parameters: Arc::new(ArpegiatorParameters::new()),
+            #[cfg(not(feature = "midi_hack_transmission"))]
             worker_channels: None,
-            resumed: false
+            resumed: false,
         }
     }
 }
@@ -104,7 +122,7 @@ impl Plugin for ArpegiatorPlugin {
             // apply to the same buffer
             // one sample would be 0.2ms down to 0.05ms. increase amount of samples if the delay between plugins
             // is greater than 0.05ms
-            initial_delay: 1,
+            initial_delay: 0,
             version: 1,
             inputs: 0,
             outputs: 0,
@@ -135,6 +153,7 @@ impl Plugin for ArpegiatorPlugin {
         ArpegiatorPlugin {
             events: vec![],
             _host: host,
+            send_buffer: Default::default(),
             pattern_device_in: Device::new("Pattern".to_string()),
             notes_device_in: Device::new("Notes".to_string()),
             pattern_device: Default::default(),
@@ -143,8 +162,9 @@ impl Plugin for ArpegiatorPlugin {
             block_size: 64,
             device_out: DeviceOut::new("Out".to_string()),
             parameters: Arc::new(ArpegiatorParameters::new()),
+            #[cfg(not(feature = "midi_hack_transmission"))]
             worker_channels: None,
-            resumed: false
+            resumed: false,
         }
     }
 
@@ -155,27 +175,30 @@ impl Plugin for ArpegiatorPlugin {
         }
         self.resumed = true;
 
-        let event_id = Uuid::new_v4() ;
+        let event_id = Uuid::new_v4();
 
         #[cfg(feature = "worker_debug")] info!("[{}] resume: enter", event_id);
-        self.close_worker(event_id);
 
         self.current_time_in_samples = 0;
 
-        let worker_channels = create_worker_thread();
-        worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port(), event_id)).unwrap();
-        worker_channels.command_sender.try_send(WorkerCommand::SetSampleRate(self.sample_rate)).unwrap();
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        {
+            self.close_worker(event_id);
+            let worker_channels = create_worker_thread();
+            worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port(), event_id)).unwrap();
+            worker_channels.command_sender.try_send(WorkerCommand::SetSampleRate(self.sample_rate)).unwrap();
 
-        self.worker_channels = match self.parameters.worker_commands.lock() {
-            Ok(mut worker_commands) => {
-                *worker_commands = Some(worker_channels.command_sender.clone());
-                Some(worker_channels)
-            }
-            Err(err) => {
-                error!("[{}] Could not get parameters lock: {}", event_id, err);
-                None
-            }
-        };
+            self.worker_channels = match self.parameters.worker_commands.lock() {
+                Ok(mut worker_commands) => {
+                    *worker_commands = Some(worker_channels.command_sender.clone());
+                    Some(worker_channels)
+                }
+                Err(err) => {
+                    error!("[{}] Could not get parameters lock: {}", event_id, err);
+                    None
+                }
+            };
+        }
 
         #[cfg(feature = "worker_debug")] info!("[{}] resume: exit", event_id);
     }
@@ -188,12 +211,16 @@ impl Plugin for ArpegiatorPlugin {
         let event_id = Uuid::new_v4();
 
         self.resumed = false;
-        #[cfg(feature = "worker_debug")] info!("[{}] suspend enter", event_id);
-        if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
-            *worker_commands = None
-        }
 
-        self.close_worker(event_id);
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        {
+            #[cfg(feature = "worker_debug")] info!("[{}] suspend enter", event_id);
+            if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
+                *worker_commands = None
+            }
+
+            self.close_worker(event_id);
+        }
         #[cfg(feature = "worker_debug")] info!("[{}] suspend exit", event_id);
     }
 
@@ -220,23 +247,26 @@ impl Plugin for ArpegiatorPlugin {
     }
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        #[cfg(target_os = "macos")] let local_time = unsafe { mach_absolute_time() };
-        #[cfg(target_os = "linux")] let local_time = 0;
+        #[cfg(not(feature = "midi_hack_transmission"))]
+        {
+            #[cfg(target_os = "macos")] let local_time = unsafe { mach_absolute_time() };
+            #[cfg(target_os = "linux")] let local_time = 0;
+            let pattern_messages = match self.worker_channels.as_ref() {
+                None => vec![],
+                Some(socket_channels) => {
+                    match socket_channels.pattern_receiver.try_recv() {
+                        Ok(payload) => {
+                            #[cfg(feature = "device_debug")]
+                            info!("[{}] received patterns : {:02X?}", self.current_time_in_samples, payload);
 
-        let pattern_messages = match self.worker_channels.as_ref() {
-            None => vec![],
-            Some(socket_channels) => {
-                match socket_channels.pattern_receiver.try_recv() {
-                    Ok(payload) => {
-                        #[cfg(feature = "device_debug")]
-                        info!("[{}] received patterns : {:02X?}", self.current_time_in_samples, payload);
-
-                        payload.messages
+                            payload.messages
+                        }
+                        Err(_) => vec![]
                     }
-                    Err(_) => vec![]
                 }
-            }
-        };
+            };
+        }
+
 
         // from here we cannot accurately tell when the buffer we're building will actually play
         // so our best guest will be the earliest :
@@ -247,6 +277,9 @@ impl Plugin for ArpegiatorPlugin {
         let pattern_device_in = &mut self.pattern_device_in;
         let pattern_device = &mut self.pattern_device;
         let notes_device_in = &mut self.notes_device_in;
+
+        #[cfg(feature = "midi_hack_transmission")]
+        let pattern_messages = vec![] ; // TODO
 
         let pattern_changes = pattern_messages.into_iter().map(|message| {
             let change = pattern_device_in.update(message, current_time_in_samples, None);
@@ -369,11 +402,14 @@ impl Plugin for ArpegiatorPlugin {
                 }
             }
 
+            #[cfg(not(feature = "midi_hack_transmission"))]
             if let Some(worker_channels) = self.worker_channels.as_ref() {
-                self.device_out.flush_to(local_time,&worker_channels.command_sender)
+                self.device_out.flush_to(local_time, &worker_channels.command_sender)
             }
         };
 
+        // TODO
+        //self.send_buffer.send_events(events, &mut self._host);
 
         self.events.clear();
 
@@ -381,6 +417,7 @@ impl Plugin for ArpegiatorPlugin {
     }
 
     fn set_sample_rate(&mut self, rate: f32) {
+        #[cfg(not(feature="midi_hack_transmission"))]
         if let Some(workers_channel) = &self.worker_channels {
             workers_channel.command_sender.try_send(WorkerCommand::SetSampleRate(rate)).unwrap()
         };
@@ -389,6 +426,8 @@ impl Plugin for ArpegiatorPlugin {
 
     fn set_block_size(&mut self, size: i64) {
         self.block_size = size;
+
+        #[cfg(not(feature="midi_hack_transmission"))]
         if let Some(workers_channel) = &self.worker_channels {
             workers_channel.command_sender.try_send(WorkerCommand::SetBlockSize(size)).unwrap()
         };
@@ -397,12 +436,14 @@ impl Plugin for ArpegiatorPlugin {
     fn process_events(&mut self, events: &api::Events) {
         for e in events.events() {
             if let Event::Midi(e) = e {
+                // TODO separate patterns and notes
                 self.events.push(e);
             }
         }
     }
 }
 
+#[cfg(not(feature="midi_hack_transmission"))]
 impl Drop for ArpegiatorPlugin {
     fn drop(&mut self) {
         let event_id = Uuid::new_v4();

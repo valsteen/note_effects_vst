@@ -1,16 +1,14 @@
-#[allow(unused_imports)]
-use log::{error, info};
-
-use std::{thread, error};
-use async_channel::{Sender, Receiver};
-use async_std::net::UdpSocket;
-use ipc_channel::ipc::IpcSender;
-
-use util::ipc_payload::{PatternPayload, IPCCommand, BootstrapPayload};
-use std::net::ToSocketAddrs;
-use async_std::task;
-use std::time::Duration;
-
+use {
+    log::{error, info},
+    std::{thread, error},
+    async_channel::{Sender, Receiver},
+    async_std::net::UdpSocket,
+    ipc_channel::ipc::IpcSender,
+    util::ipc_payload::{PatternPayload, IPCCommand, BootstrapPayload},
+    std::net::ToSocketAddrs,
+    async_std::task,
+    std::time::Duration
+};
 
 pub(crate) enum IPCWorkerCommand {
     Stop,
@@ -60,7 +58,6 @@ async fn try_udp_send_receiver(port: u16) -> Result<IpcSender<IPCCommand>, Box<d
     info!("Ping received");
     Ok(ipc_sender)
 }
-
 
 async fn ipc_worker(ipc_worker_sender: Sender<IPCWorkerCommand>, ipc_worker_receiver: Receiver<IPCWorkerCommand>) {
     let mut port = None;
@@ -119,7 +116,6 @@ async fn ipc_worker(ipc_worker_sender: Sender<IPCWorkerCommand>, ipc_worker_rece
         }
     }
 }
-
 
 pub(crate) fn spawn_ipc_worker() -> Sender<IPCWorkerCommand> {
     let (worker_sender, worker_receiver) = async_channel::unbounded();
