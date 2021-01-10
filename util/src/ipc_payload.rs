@@ -7,7 +7,6 @@ use crate::system::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PatternPayload {
-    #[cfg(target_os = "macos")]
     pub time: u64,
     pub messages: Vec<MidiMessageWithDelta>,
 }
@@ -19,5 +18,12 @@ pub enum IPCCommand {
     // stop is only used locally, but send over an IPC channel so the worker can listen both on the remote IPC
     // for new patterns, and on local IPC for stopping the worker
     Stop(IpcSender<()>, Uuid),
-    Ping
+    Ping(IpcSender<()>)
+}
+
+
+#[derive(Serialize, Deserialize)]
+pub enum BootstrapPayload {
+    Channel(IpcSender<IPCCommand>),
+    Timeout
 }

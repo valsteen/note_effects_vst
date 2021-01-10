@@ -31,6 +31,7 @@ struct ArpegiatorPatternReceiver {
     ipc_worker_sender: Option<Sender<IPCWorkerCommand>>,
     messages: Vec<MidiMessageWithDelta>,
     current_time: usize,
+    resumed: bool,
     parameters: Arc<ArpegiatorPatternReceiverParameters>
 }
 
@@ -42,6 +43,7 @@ impl Default for ArpegiatorPatternReceiver {
             ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
+            resumed: false,
             parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
         }
     }
@@ -53,6 +55,7 @@ impl ArpegiatorPatternReceiver {
             sender.try_send(IPCWorkerCommand::Stop).unwrap_or_else(|err| {
                 error!("Error while closing sender channel : {}", err)
             });
+            sender.close();
         }
     }
 }
@@ -80,9 +83,17 @@ impl Plugin for ArpegiatorPatternReceiver {
     }
 
     fn resume(&mut self) {
+        if self.resumed {
+            return;
+        }
+        self.resumed = true;
+
         self.current_time = 0 ;
 
+        self.stop_worker();
+
         let sender= spawn_ipc_worker();
+
         self.ipc_worker_sender = Some(sender.clone());
         sender.try_send(IPCWorkerCommand::SetPort(self.parameters.get_port())).unwrap();
 
@@ -92,6 +103,10 @@ impl Plugin for ArpegiatorPatternReceiver {
     }
 
     fn suspend(&mut self) {
+        if !self.resumed {
+            return;
+        }
+        self.resumed = false;
         self.stop_worker()
     }
 
@@ -105,6 +120,7 @@ impl Plugin for ArpegiatorPatternReceiver {
             ipc_worker_sender: None,
             messages: vec![],
             current_time: 0,
+            resumed: false,
             parameters: Arc::new(ArpegiatorPatternReceiverParameters::new())
         }
     }
@@ -131,8 +147,10 @@ impl Plugin for ArpegiatorPatternReceiver {
         if !self.messages.is_empty() {
             if let Some(ipc_worker_sender) = &self.ipc_worker_sender {
                 let payload = PatternPayload {
-                    #[cfg(target_os = "macos")]
-                    time: unsafe { mach::mach_time::mach_absolute_time() },
+                    time: {
+                        #[cfg(target_os = "macos")] unsafe { mach::mach_time::mach_absolute_time() }
+                        #[cfg(target_os = "linux")] 0
+                    },
                     messages: take(&mut self.messages)
                 } ;
                 ipc_worker_sender.try_send(IPCWorkerCommand::Send(payload)).unwrap()

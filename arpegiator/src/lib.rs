@@ -24,8 +24,9 @@ use workers::main_worker::{create_worker_thread, WorkerChannels, WorkerCommand};
 use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT};
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
-use crate::midi_messages::timed_event::TimedEvent;
 use util::system::Uuid;
+#[cfg(target_os = "macos")] use mach::mach_time::mach_absolute_time;
+use crate::midi_messages::timed_event::TimedEvent;
 
 mod midi_messages;
 mod workers;
@@ -219,30 +220,14 @@ impl Plugin for ArpegiatorPlugin {
     }
 
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
-        #[cfg(target_os = "macos")]
-        let local_time = unsafe {
-            mach::mach_time::mach_absolute_time()
-        };
-
-        #[cfg(target_os = "linux")]
-        let local_time = 0;
+        #[cfg(target_os = "macos")] let local_time = unsafe { mach_absolute_time() };
+        #[cfg(target_os = "linux")] let local_time = 0;
 
         let pattern_messages = match self.worker_channels.as_ref() {
             None => vec![],
             Some(socket_channels) => {
                 match socket_channels.pattern_receiver.try_recv() {
                     Ok(payload) => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            let diff_milliseconds = (local_time - payload.time) as f64 / 10e6;
-
-                            // TODO following will device if the initial_delay is enough
-                            info!("Received time: {:?} current time: {:?} = {} milliseconds",
-                                  payload.time,
-                                  local_time,
-                                  diff_milliseconds);
-                        };
-
                         #[cfg(feature = "device_debug")]
                         info!("[{}] received patterns : {:02X?}", self.current_time_in_samples, payload);
 

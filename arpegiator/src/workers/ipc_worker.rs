@@ -4,10 +4,9 @@ use log::{error, info};
 use async_channel::Sender;
 use async_std::net::UdpSocket;
 use async_std::task;
-use futures_lite::io::{Error, ErrorKind};
-use ipc_channel::ipc::{IpcSender, IpcReceiver, IpcReceiverSet};
+use ipc_channel::ipc::{IpcSender, IpcReceiver, IpcReceiverSet, IpcSelectionResult};
 
-use util::ipc_payload::{PatternPayload, IPCCommand};
+use util::ipc_payload::{PatternPayload, IPCCommand, BootstrapPayload};
 
 use crate::workers::main_worker::WorkerCommand;
 use std::{thread, error};
@@ -22,6 +21,13 @@ pub(crate) enum IPCWorkerCommand {
     PayloadReceived(PatternPayload, Uuid),
 }
 
+fn bootstrap_ipc(ipc_server_name: String) -> Result<IpcReceiver<IPCCommand>, Box<dyn error::Error>> {
+    let ipc_bootstrap_sender = IpcSender::connect(ipc_server_name)?;
+    let (ipc_sender, ipc_receiver) = ipc_channel::ipc::channel()?;
+    ipc_bootstrap_sender.send(BootstrapPayload::Channel(ipc_sender))?;
+    Ok(ipc_receiver)
+}
+
 
 async fn udp_receive_worker(socket: UdpSocket, sender: Sender<IPCWorkerCommand>) {
     let mut buf = vec![0u8; 1024];
@@ -30,13 +36,23 @@ async fn udp_receive_worker(socket: UdpSocket, sender: Sender<IPCWorkerCommand>)
     while let Ok(len) = socket.recv(&mut buf).await {
         exit_event_id = Uuid::new_v4();
 
-        let ipc_worker_command = match bincode::deserialize::<IpcReceiver<IPCCommand>>(&buf[..len]) {
-            Ok(ipc_receiver) => {
-                info!("[{}] Received IPC Receiver via UDP", exit_event_id);
-                IPCWorkerCommand::SocketReceive(ipc_receiver, exit_event_id)
+        info!("[{}] Received {} bytes", exit_event_id, len);
+
+        let ipc_worker_command = match bincode::deserialize::<String>(&buf[..len]) {
+            Ok(ipc_server_name) => {
+                match bootstrap_ipc(ipc_server_name) {
+                    Ok(ipc_receiver) => {
+                        info!("[{}] Received IPC Receiver via UDP", exit_event_id);
+                        IPCWorkerCommand::SocketReceive(ipc_receiver, exit_event_id)
+                    }
+                    Err(err) => {
+                        info!("[{}] failed to get an IPC Receiver via UDP: {}", exit_event_id, err);
+                        continue;
+                    }
+                }
             }
             Err(err) => {
-                error!("[{}] Ignoring invalid UDP payload ({}) - expected ICP receiver", exit_event_id, err);
+                error!("[{}] Ignoring invalid UDP payload ({}) - expected a name string", exit_event_id, err);
                 continue;
             }
         };
@@ -67,7 +83,14 @@ fn spawn_ipc_receiver_thread(ipc_receiver: IpcReceiver<IPCCommand>,
         #[cfg(feature = "worker_debug")] info!("started ipc worker");
         'mainloop: while let Ok(results) = set.select() {
             for result in results {
-                let (_, opaque_message) = result.unwrap();
+                let opaque_message = match result {
+                    IpcSelectionResult::MessageReceived(_, opaque_message) => opaque_message,
+                    IpcSelectionResult::ChannelClosed(_) => {
+                        exit_event_id = Uuid::new_v4();
+                        error!("[{}] ipc channel closed", exit_event_id);
+                        break 'mainloop;
+                    }
+                };
                 match opaque_message.to::<IPCCommand>().unwrap() {
                     IPCCommand::PatternPayload(payload) => {
                         let event_id = Uuid::new_v4();
@@ -77,8 +100,12 @@ fn spawn_ipc_receiver_thread(ipc_receiver: IpcReceiver<IPCCommand>,
                             break 'mainloop;
                         }
                     }
-                    IPCCommand::Ping => {
-                        info!("Received ping from peer")
+                    IPCCommand::Ping(sender) => {
+                        info!("Received ping from peer");
+                        match sender.send(()) {
+                            Ok(_) => { info!("pong sent") }
+                            Err(err) => { info!("error while sending pong: {}", err) }
+                        }
                     }
                     IPCCommand::Stop(ack_channel_sender, event_id) => {
                         exit_event_id = event_id;
@@ -122,7 +149,8 @@ pub(crate) fn spawn_ipc_worker(port: u16,
             match command {
                 IPCWorkerCommand::SocketReceive(ipc_receiver_from_socket, event_id) => {
                     if ipc_receiver_sender.is_some() {
-                        if let Err(err) = close_ipc_receiver_thread(take(&mut ipc_receiver_sender).unwrap(), event_id) {
+                        if let Err(err) = close_ipc_receiver_thread(
+                            take(&mut ipc_receiver_sender).unwrap(), event_id) {
                             error!("[{}] Error while shutting down ipc receiver worker {}", event_id, err)
                         }
                     }
@@ -146,10 +174,21 @@ pub(crate) fn spawn_ipc_worker(port: u16,
                     error!("[{}] IPC Receiver disconnected", event_id)
                 }
                 IPCWorkerCommand::PayloadReceived(payload, event_id) => {
+                    let _payload_time = payload.time;
                     if let Err(err) = pattern_sender.send(payload).await {
                         exit_event_id = event_id;
                         error!("[{}] IPC worker: notes sender channel error, quitting ({})", exit_event_id, err);
                         break;
+                    }
+
+                    #[cfg(feature = "device_debug")]
+                    {
+                        let local_time = unsafe { mach::mach_time::mach_absolute_time() };
+                        let diff_nanoseconds = local_time - _payload_time;
+                        info!("Received time: {:?} current time: {:?} = {} nanoseconds",
+                              payload_time,
+                              local_time,
+                              diff_nanoseconds);
                     }
                 }
             }
@@ -185,7 +224,7 @@ error::Error>> {
     ipc_receiver_sender.send(IPCCommand::Stop(ack_sender, event_id))?;
 
     #[cfg(feature = "worker_debug")] info!("[{}] waiting for ack from ipc receiver", event_id);
-    ack_receiver.try_recv().map_err(|x| Error::new(ErrorKind::Other, format!("{:?}", x)))?;
+    ack_receiver.try_recv().map_err(|x| format!("Error while receiving ack from ipc receiver {:?}", x))?;
 
     #[cfg(feature = "worker_debug")] info!("[{}] stopped ipc receiver", event_id);
     Ok(())

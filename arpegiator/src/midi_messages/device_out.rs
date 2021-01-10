@@ -34,12 +34,13 @@ impl DeviceOut {
         self.device.update(midi_message, current_time, id);
     }
 
-    pub fn flush_to(&mut self, buffer_start_time: u64, midi_output_sender: &Sender<WorkerCommand>) {
+    pub fn flush_to(&mut self, reception_time: u64, midi_output_sender: &Sender<WorkerCommand>) {
         if self.queue.is_empty() {
             return
         }
         midi_output_sender.try_send(
-            WorkerCommand::SendToMidiOutput { buffer_start_time, messages: take(&mut self.queue)
+            WorkerCommand::SendToMidiOutput {
+                reception_time, messages: take(&mut self.queue)
             }).unwrap_or_else(
             |err| error!("Could not send to the controller worker {}", err)
         );

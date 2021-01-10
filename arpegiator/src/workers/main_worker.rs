@@ -20,7 +20,7 @@ pub(crate) enum WorkerCommand {
     SetPort(u16, Uuid),
     SetSampleRate(f32),
     SetBlockSize(i64),
-    SendToMidiOutput { buffer_start_time: u64, messages: Vec<MidiMessageWithDelta> },
+    SendToMidiOutput { reception_time: u64, messages: Vec<MidiMessageWithDelta> },
     IPCWorkerStopped(Uuid, u16),
 }
 
@@ -93,10 +93,10 @@ pub(crate) fn create_worker_thread() -> WorkerChannels {
                         }
                     }
 
-                    WorkerCommand::SendToMidiOutput { buffer_start_time, messages } => {
+                    WorkerCommand::SendToMidiOutput { reception_time, messages } => {
                         if let Some(midi_out_worker_sender) = midi_out_worker_sender.as_ref() {
                             midi_out_worker_sender.send(
-                                MidiOutputWorkerCommand::SendToController { buffer_start_time, messages }
+                                MidiOutputWorkerCommand::SendToController { reception_time, messages }
                             ).await.unwrap();
                         }
                     }
@@ -105,8 +105,10 @@ pub(crate) fn create_worker_thread() -> WorkerChannels {
                             midi_out_worker_sender.send(MidiOutputWorkerCommand::SetSampleRate(rate)).await.unwrap();
                         }
                     }
-                    WorkerCommand::SetBlockSize(_size) => {
-                        // not used
+                    WorkerCommand::SetBlockSize(size) => {
+                        if let Some(midi_out_worker_sender) = midi_out_worker_sender.as_ref() {
+                            midi_out_worker_sender.send(MidiOutputWorkerCommand::SetBlockSize(size)).await.unwrap();
+                        }
                     }
                     WorkerCommand::IPCWorkerStopped(event_id, ipc_worker_port) => {
                         if current_port.is_none() || current_port.unwrap() != ipc_worker_port {
@@ -151,7 +153,7 @@ async fn close_workers(
             error!("[{}] Could not contact worker sender for shutdown : {}", event_id, err);
         });
         match ack_receiver.recv().await {
-            Ok(_) => { error!("[{}] ipc worker exit ack", event_id) }
+            Ok(_) => { info!("[{}] ipc worker exit ack", event_id) }
             Err(err) => { error!("[{}] ipc worker did not ack exit: {}", event_id, err) }
         }
     };
