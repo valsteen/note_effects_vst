@@ -137,15 +137,6 @@ impl Plugin for ArpegiatorPlugin {
         }
     }
 
-    fn vendor_specific(&mut self, index: i32, value: isize, ptr: *mut c_void, opt: f32) -> isize {
-        // according to MPE specifications a vendor specific call should occur in order to signal VST
-        // support ( page 15 ). As it seems all bitwig does is setting "MPE support" to true by default
-        // when CanDo replies to "MPE", and it's just sending pitchwheel/pressure.
-        // https://d30pueezughrda.cloudfront.net/campaigns/mpe/mpespec.pdf
-        info!("vendor_specific {:?} {:?} {:?} {:?}", index, value, ptr, opt);
-        0
-    }
-
     fn new(host: HostCallback) -> Self {
         logging_setup();
         info!("{} use_channel_pressure: {}",
@@ -169,6 +160,23 @@ impl Plugin for ArpegiatorPlugin {
             worker_channels: None,
             resumed: false,
         }
+    }
+
+    fn set_sample_rate(&mut self, rate: f32) {
+        #[cfg(not(feature="midi_hack_transmission"))]
+        if let Some(workers_channel) = &self.worker_channels {
+            workers_channel.command_sender.try_send(WorkerCommand::SetSampleRate(rate)).unwrap()
+        };
+        self.sample_rate = rate
+    }
+
+    fn set_block_size(&mut self, size: i64) {
+        self.block_size = size;
+
+        #[cfg(not(feature="midi_hack_transmission"))]
+        if let Some(workers_channel) = &self.worker_channels {
+            workers_channel.command_sender.try_send(WorkerCommand::SetBlockSize(size)).unwrap()
+        };
     }
 
     fn resume(&mut self) {
@@ -227,8 +235,13 @@ impl Plugin for ArpegiatorPlugin {
         #[cfg(feature = "worker_debug")] info!("[{}] suspend exit", event_id);
     }
 
-    fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
-        Arc::clone(&self.parameters) as Arc<dyn vst::plugin::PluginParameters>
+    fn vendor_specific(&mut self, index: i32, value: isize, ptr: *mut c_void, opt: f32) -> isize {
+        // according to MPE specifications a vendor specific call should occur in order to signal VST
+        // support ( page 15 ). As it seems all bitwig does is setting "MPE support" to true by default
+        // when CanDo replies to "MPE", and it's just sending pitchwheel/pressure.
+        // https://d30pueezughrda.cloudfront.net/campaigns/mpe/mpespec.pdf
+        info!("vendor_specific {:?} {:?} {:?} {:?}", index, value, ptr, opt);
+        0
     }
 
     fn can_do(&self, can_do: CanDo) -> vst::api::Supported {
@@ -435,29 +448,16 @@ impl Plugin for ArpegiatorPlugin {
         self.current_time_in_samples += buffer.samples()
     }
 
-    fn set_sample_rate(&mut self, rate: f32) {
-        #[cfg(not(feature="midi_hack_transmission"))]
-        if let Some(workers_channel) = &self.worker_channels {
-            workers_channel.command_sender.try_send(WorkerCommand::SetSampleRate(rate)).unwrap()
-        };
-        self.sample_rate = rate
-    }
-
-    fn set_block_size(&mut self, size: i64) {
-        self.block_size = size;
-
-        #[cfg(not(feature="midi_hack_transmission"))]
-        if let Some(workers_channel) = &self.worker_channels {
-            workers_channel.command_sender.try_send(WorkerCommand::SetBlockSize(size)).unwrap()
-        };
-    }
-
     fn process_events(&mut self, events: &api::Events) {
         for e in events.events() {
             if let Event::Midi(e) = e {
                 self.events.push(e);
             }
         }
+    }
+
+    fn get_parameter_object(&mut self) -> Arc<dyn vst::plugin::PluginParameters> {
+        Arc::clone(&self.parameters) as Arc<dyn vst::plugin::PluginParameters>
     }
 }
 

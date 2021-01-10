@@ -100,6 +100,24 @@ impl Plugin for ArpegiatorPatternReceiver {
         }
     }
 
+    fn new(host: HostCallback) -> Self {
+        logging_setup();
+        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version,
+        $.compiler, $.timestamp));
+
+        ArpegiatorPatternReceiver {
+            host,
+            #[cfg(not(feature="midi_hack_transmission"))]
+            ipc_worker_sender: None,
+            messages: vec![],
+            current_time: 0,
+            resumed: false,
+            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new()),
+            #[cfg(feature="midi_hack_transmission")]
+            send_buffer: Default::default()
+        }
+    }
+
     fn resume(&mut self) {
         if self.resumed {
             return;
@@ -132,24 +150,6 @@ impl Plugin for ArpegiatorPatternReceiver {
         #[cfg(not(feature="midi_hack_transmission"))]
         {
             self.stop_worker()
-        }
-    }
-
-    fn new(host: HostCallback) -> Self {
-        logging_setup();
-        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version,
-        $.compiler, $.timestamp));
-
-        ArpegiatorPatternReceiver {
-            host,
-            #[cfg(not(feature="midi_hack_transmission"))]
-            ipc_worker_sender: None,
-            messages: vec![],
-            current_time: 0,
-            resumed: false,
-            parameters: Arc::new(ArpegiatorPatternReceiverParameters::new()),
-            #[cfg(feature="midi_hack_transmission")]
-            send_buffer: Default::default()
         }
     }
 
@@ -205,10 +205,18 @@ impl Plugin for ArpegiatorPatternReceiver {
 
         self.messages.extend(events.events().map(|event| match event {
             #[allow(unused_mut)]
-            Event::Midi(mut event) => Ok(MidiMessageWithDelta {
-                delta_frames: event.delta_frames as u16,
-                data: event.data.into()
-            }),
+            Event::Midi(mut event) => {
+                #[cfg(not(feature = "midi_hack_transmission"))] {
+                    Ok(MidiMessageWithDelta {
+                        delta_frames: event.delta_frames as u16,
+                        data: event.data.into(),
+                    })
+                }
+                #[cfg(feature = "midi_hack_transmission")] {
+                    event.data[0] -= 0x80;
+                    Ok(event)
+                }
+            },
             Event::SysEx(_) => Err(()),
             Event::Deprecated(_) => Err(())
         }).filter(|item| item.is_ok()).map(|item| item.unwrap()));
