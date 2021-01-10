@@ -10,7 +10,6 @@ use util::ipc_payload::{PatternPayload, IPCCommand, BootstrapPayload};
 use std::net::ToSocketAddrs;
 use async_std::task;
 use std::time::Duration;
-use std::io::{Error, ErrorKind};
 
 
 pub(crate) enum IPCWorkerCommand {
@@ -46,31 +45,20 @@ async fn try_udp_send_receiver(port: u16) -> Result<IpcSender<IPCCommand>, Box<d
 
     task::sleep(Duration::new(1,0 )).await;
 
-    let ipc_sender = match bootstrap_result_receiver.try_recv() {
-        Ok(ipc_sender) => {
-            ipc_sender
-        }
-        Err(_) => {
-            IpcSender::<BootstrapPayload>::connect(name).unwrap().send(BootstrapPayload::Timeout).unwrap();
-            return Err(Box::new(Error::new(ErrorKind::Other, "Connection timeout")));
-        }
-    };
+    let ipc_sender = bootstrap_result_receiver.try_recv().or_else(|e| {
+        IpcSender::<BootstrapPayload>::connect(name).or(Err("Cannot connect to signal timeout on ipc bootstrap"))?
+            .send(BootstrapPayload::Timeout).or(Err("Cannot send timeout to ipc bootstrapper"))?;
+        Err(format!("Connection timeout {}", e))
+    })?;
 
     let (ping_sender, ping_receiver) = ipc_channel::ipc::channel::<()>()?;
     info!("sending ping");
     ipc_sender.send(IPCCommand::Ping(ping_sender))?;
     task::sleep(Duration::new(1,0)).await;
 
-    match ping_receiver.try_recv() {
-        Ok(_) => {
-            info!("pong received");
-            Ok(ipc_sender)
-        }
-        Err(e) => {
-            error!("pong not received");
-            Err(Box::new(Error::new(ErrorKind::Other, format!("{:?}", e))))
-        }
-    }
+    ping_receiver.try_recv().or(Err("Pong not received"))?;
+    info!("Ping received");
+    Ok(ipc_sender)
 }
 
 

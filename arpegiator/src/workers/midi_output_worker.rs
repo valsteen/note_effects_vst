@@ -23,8 +23,6 @@ use util::midi_message_with_delta::MidiMessageWithDelta;
 
 #[cfg(target_os = "macos")]
 use crate::system::second_to_mach_timebase;
-use async_std::io::ErrorKind;
-use std::io::Error;
 use std::error;
 use util::system::Uuid;
 
@@ -72,8 +70,8 @@ pub(crate) fn spawn_midi_output_worker(name: String) ->
     let midi_in_connection = midi_in.create_virtual(&*name, |_time, _data, _| {
         // noop for now
     }, ()).map_err(
-        |x| Error::new(ErrorKind::Other, format!("os error: {:?}", x)
-    ))?;
+        |x| format!("os error: {:?}", x)
+    )?;
 
     let (sender, receiver) = unbounded::<MidiOutputWorkerCommand>();
 
