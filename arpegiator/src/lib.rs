@@ -301,16 +301,16 @@ impl Plugin for ArpegiatorPlugin {
         let notes_device_in = &mut self.notes_device_in;
 
         #[cfg(feature = "midi_hack_transmission")]
-        let (events, pattern_messages) : (Vec<MidiEvent>, Vec<MidiMessageWithDelta>) = {
-            let (mut events, mut patterns) : (Vec<MidiEvent>, Vec<MidiEvent>) = self.events.drain(..).partition(
+        let (pattern_messages, notes) : (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
+            let (mut patterns, mut notes) : (Vec<MidiEvent>, Vec<MidiEvent>) = self.events.drain(..).partition(
                 |item| item.data[0] < 0x80);
-            events.sort_by_key(|x| x.delta_frames);
+            notes.sort_by_key(|x| x.delta_frames);
             patterns.sort_by_key(|x| x.delta_frames);
             let patterns = patterns.iter().map(|event| MidiMessageWithDelta {
                 delta_frames: event.delta_frames as u16,
                 data: RawMessage::from([event.data[0] + 0x80, event.data[1], event.data[2]])
             }).collect_vec();
-            (events, patterns)
+            (patterns, notes)
         };
 
         let pattern_changes = pattern_messages.into_iter().map(|message| {
@@ -319,7 +319,7 @@ impl Plugin for ArpegiatorPlugin {
             SourceChange::PatternChange(change)
         });
 
-        let note_changes = events.iter().map(|event| {
+        let note_changes = notes.iter().map(|event| {
             let midi_message_with_delta = MidiMessageWithDelta {
                 delta_frames: event.delta_frames as u16,
                 data: event.data.into(),
@@ -440,8 +440,9 @@ impl Plugin for ArpegiatorPlugin {
             self.device_out.flush_to(local_time, &worker_channels.command_sender)
         }
 
-        // TODO
-        //self.send_buffer.send_events(events, &mut self._host);
+        #[cfg(feature = "midi_hack_transmission")] {
+            self.send_buffer.send_events(take(&mut self.device_out.queue), &mut self._host);
+        }
 
         self.events.clear();
 
@@ -451,6 +452,7 @@ impl Plugin for ArpegiatorPlugin {
     fn process_events(&mut self, events: &api::Events) {
         for e in events.events() {
             if let Event::Midi(e) = e {
+                #[cfg(feature = "device_debug")] info!("Received {:2X?}", e.data);
                 self.events.push(e);
             }
         }
