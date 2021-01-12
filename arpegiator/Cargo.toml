@@ -27,8 +27,12 @@ name = "arpegiator"
 crate-type = ["cdylib", "lib"]
 
 [features]
-default = ["use_channel_pressure", "forward_pattern_cc", "worker_debug", "midi_hack_transmission"]
-use_channel_pressure = []
+default = ["pressure_as_channel_pressure", "forward_pattern_cc", "worker_debug", "midi_hack_transmission"]
+
+pressure_as_channel_pressure = []
+pressure_as_aftertouch = []
+pressure_as_cc7 = []
+
 worker_debug = []
 forward_note_cc = []
 forward_pattern_cc = []

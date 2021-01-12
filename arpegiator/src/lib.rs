@@ -17,9 +17,9 @@ use midi_messages::device::{Device, DeviceChange, Expression};
 use midi_messages::device_out::DeviceOut;
 use util::logging::logging_setup;
 use util::messages::{PitchBend, Timbre};
-#[cfg(not(feature = "use_channel_pressure"))]
+#[cfg(feature = "pressure_as_aftertouch")]
 use util::messages::AfterTouch;
-#[cfg(feature = "use_channel_pressure")]
+#[cfg(feature = "pressure_as_channel_pressure")]
 use util::messages::Pressure;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
@@ -378,11 +378,12 @@ impl Plugin for ArpegiatorPlugin {
                                     Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }.into())
                                 }
                                 Expression::Pressure | Expression::AfterTouch => {
-                                    #[cfg(feature = "use_channel_pressure")] {
+                                    #[cfg(feature = "pressure_as_channel_pressure")] {
                                         Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
                                     }
 
-                                    #[cfg(not(feature = "use_channel_pressure"))] match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
+                                    #[cfg(feature = "pressure_as_aftertouch")] match self.notes_device_in.notes.values()
+                                        .sorted().nth(pattern.index as usize) {
                                         None => None,
                                         Some(note) => {
                                             if let Some(pitch) = pattern.transpose(note.pitch) {
