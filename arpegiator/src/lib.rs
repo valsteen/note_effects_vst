@@ -21,6 +21,8 @@ use util::messages::{PitchBend, Timbre};
 use util::messages::AfterTouch;
 #[cfg(feature = "pressure_as_channel_pressure")]
 use util::messages::Pressure;
+#[cfg(feature = "pressure_as_cc7")]
+use util::messages::CC;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
 #[cfg(not(feature="midi_hack_transmission"))]
@@ -139,9 +141,19 @@ impl Plugin for ArpegiatorPlugin {
 
     fn new(host: HostCallback) -> Self {
         logging_setup();
-        info!("{} use_channel_pressure: {}",
-              build_info::format!("{{{} v{} built with {} at {}}} ", $.crate_info.name, $.crate_info.version, $
-              .compiler, $.timestamp), cfg!(feature = "use_channel_pressure"));
+        info!("{} \
+        pressure_as_cc7: {} \
+        pressure_as_aftertouch: {} \
+        pressure_as_channel_pressure: {} \
+        midi_hack_transmission {} \
+        ",
+              build_info::format!("{{{} v{} built with {} at {}}} ",
+              $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
+              cfg!(feature = "pressure_as_cc7"),
+              cfg!(feature = "pressure_as_aftertouch"),
+              cfg!(feature = "pressure_as_channel_pressure"),
+              cfg!(feature = "midi_hack_transmission"),
+              );
 
         ArpegiatorPlugin {
             events: vec![],
@@ -382,18 +394,28 @@ impl Plugin for ArpegiatorPlugin {
                                         Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
                                     }
 
-                                    #[cfg(feature = "pressure_as_aftertouch")] match self.notes_device_in.notes.values()
-                                        .sorted().nth(pattern.index as usize) {
-                                        None => None,
-                                        Some(note) => {
-                                            if let Some(pitch) = pattern.transpose(note.pitch) {
-                                                Some(AfterTouch {
-                                                    channel: pattern.channel,
-                                                    pitch,
-                                                    value: pattern.pressure,
-                                                }.into())
-                                            } else {
-                                                None
+                                    #[cfg(any(feature = "pressure_as_aftertouch", feature="pressure_as_cc7"))] {
+                                        match self.notes_device_in.nth(pattern.index as usize) {
+                                            None => None,
+                                            Some(note) => {
+                                                if let Some(pitch) = pattern.transpose(note.pitch) {
+                                                    #[cfg(feature="pressure_as_aftertouch")] {
+                                                        Some(AfterTouch {
+                                                            channel: pattern.channel,
+                                                            pitch,
+                                                            value: pattern.pressure,
+                                                        }.into())
+                                                    }
+                                                    #[cfg(feature="pressure_as_cc7")] {
+                                                        Some(CC {
+                                                            channel: pattern.channel,
+                                                            cc: 7,
+                                                            value: pattern.pressure,
+                                                        }.into())
+                                                    }
+                                                } else {
+                                                    None
+                                                }
                                             }
                                         }
                                     }

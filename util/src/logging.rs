@@ -16,7 +16,8 @@ pub fn logging_setup() {
         WriteLogger::init(
             LevelFilter::Info, config.build(), file,
         ).unwrap();
-        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp))
+        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $
+        .compiler, $.timestamp))
     }
 
     log_panics::init();

@@ -102,8 +102,11 @@ impl Plugin for ArpegiatorPatternReceiver {
 
     fn new(host: HostCallback) -> Self {
         logging_setup();
-        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version,
-        $.compiler, $.timestamp));
+        info!("{} midi_hack_transmission={}",
+              build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name,
+                $.crate_info.version,
+                $.compiler, $.timestamp),
+              cfg!(feature = "midi_hack_transmission"));
 
         ArpegiatorPatternReceiver {
             host,

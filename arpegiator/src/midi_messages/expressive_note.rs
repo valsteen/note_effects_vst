@@ -10,6 +10,9 @@ use util::messages::Pressure;
 #[cfg(feature= "pressure_as_aftertouch")]
 use util::messages::AfterTouch;
 
+#[cfg(feature= "pressure_as_cc7")]
+use util::messages::CC;
+
 pub struct ExpressiveNote {
     pub channel: u8,
     pub pitch: u8,
@@ -28,6 +31,16 @@ impl ExpressiveNote {
             channel: self.channel,
             pitch: self.pitch,
             value: self.pressure,
+        }.into()
+    }
+
+    #[cfg(feature= "pressure_as_cc7")]
+    #[inline]
+    fn get_pressure_note(&self) -> RawMessage {
+        CC {
+            channel: self.channel,
+            value: self.pressure,
+            cc: 7
         }.into()
     }
 

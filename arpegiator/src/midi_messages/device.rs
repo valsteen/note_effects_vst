@@ -9,6 +9,7 @@ use util::midi_message_with_delta::MidiMessageWithDelta;
 
 use crate::midi_messages::note::{NoteIndex, Note, CCIndex};
 use crate::midi_messages::timed_event::TimedEvent;
+use itertools::Itertools;
 
 
 pub struct Device {
@@ -33,6 +34,11 @@ impl Device {
             }; 16],
             note_index: 0,
         }
+    }
+
+    #[inline]
+    pub fn nth(&self, n: usize) -> Option<&Note> {
+        self.notes.values().sorted().nth(n)
     }
 }
 
