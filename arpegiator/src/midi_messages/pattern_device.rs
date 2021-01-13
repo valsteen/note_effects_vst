@@ -1,7 +1,9 @@
 use log::error;
+
+use core::iter::Filter;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-
+use std::collections::hash_map::Values;
 
 use util::messages::CC;
 use crate::midi_messages::device::{DeviceChange, Expression};
@@ -9,9 +11,10 @@ use crate::midi_messages::pattern::Pattern;
 use crate::midi_messages::timed_event::TimedEvent;
 
 
+
 #[derive(Default)]
 pub struct PatternDevice {
-    pub patterns: HashMap<usize, Pattern>
+    patterns: HashMap<usize, Pattern>
 }
 
 
@@ -115,7 +118,13 @@ impl PatternDevice {
                 }
             }
             DeviceChange::CCChange { time, cc } => PatternDeviceChange::CC { cc, time },
-            DeviceChange::None { time } => PatternDeviceChange::None { time }
+            DeviceChange::Ignored { time } => PatternDeviceChange::None { time }
         }
     }
+
+    pub fn at(&self, index: u8) -> Filter<Values<'_, usize, Pattern>, PatternIteratorClosure> {
+        self.patterns.values().filter(Box::new(move |pattern| pattern.index == index))
+    }
 }
+
+type PatternIteratorClosure = Box<dyn Fn(&&Pattern) -> bool>;

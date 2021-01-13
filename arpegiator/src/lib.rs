@@ -348,9 +348,22 @@ impl Plugin for ArpegiatorPlugin {
 
             match change {
                 SourceChange::NoteChange(change) => {
-                    // TODO note change should trigger pitchbend events
                     match change {
-                        DeviceChange::AddNote { .. } => {}
+                        DeviceChange::AddNote { note , .. } => {
+                            let note_position = self.notes_device_in.notes.values().position(|n| {
+                                n.pitch < note.pitch
+                            });
+
+                            if let Some(position) = note_position {
+                                for pattern in self.pattern_device.at(position as u8) {
+                                    // careful here, the output note can have an octave difference
+                                    if let Some(target_pitch) =  pattern.transpose(note.pitch) {
+                                        self.device_out.update_pitch(pattern.id, target_pitch, delta_frames,
+                                                                     current_time_in_samples);
+                                    }
+                                }
+                            }
+                        }
                         DeviceChange::RemoveNote { .. } => {}
                         DeviceChange::NoteExpressionChange { .. } => {}
                         DeviceChange::ReplaceNote { .. } => {}
@@ -365,14 +378,14 @@ impl Plugin for ArpegiatorPlugin {
                                 let _ = self.device_out.update(message, current_time_in_samples, None);
                             }
                         }
-                        DeviceChange::None { .. } => {}
+                        DeviceChange::Ignored { .. } => {}
                     }
                 }
                 SourceChange::PatternChange(change) => {
                     match change {
                         PatternDeviceChange::AddPattern { pattern, .. } => {
                             // TODO "hold notes" logic
-                            match self.notes_device_in.notes.values().sorted().nth(pattern.index as usize) {
+                            match self.notes_device_in.nth(pattern.index as usize) {
                                 None => {}
                                 Some(note) => self.device_out.push_note_on(&pattern, &note, current_time_in_samples)
                             }
@@ -398,11 +411,11 @@ impl Plugin for ArpegiatorPlugin {
                                         match self.notes_device_in.nth(pattern.index as usize) {
                                             None => None,
                                             Some(note) => {
-                                                if let Some(pitch) = pattern.transpose(note.pitch) {
+                                                if let Some(_pitch) = pattern.transpose(note.pitch) {
                                                     #[cfg(feature="pressure_as_aftertouch")] {
                                                         Some(AfterTouch {
                                                             channel: pattern.channel,
-                                                            pitch,
+                                                            _pitch,
                                                             value: pattern.pressure,
                                                         }.into())
                                                     }
@@ -464,7 +477,7 @@ impl Plugin for ArpegiatorPlugin {
         }
 
         #[cfg(feature = "midi_hack_transmission")] {
-            self.send_buffer.send_events(take(&mut self.device_out.queue), &mut self._host);
+            self.send_buffer.send_events(take(&mut self.device_out.output_queue), &mut self._host);
         }
 
         self.events.clear();

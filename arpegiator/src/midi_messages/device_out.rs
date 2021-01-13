@@ -5,7 +5,7 @@ use {
     std::mem::take
 };
 
-use util::messages::NoteOff;
+use util::messages::{NoteOff, PitchBend};
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
 
@@ -17,8 +17,8 @@ use crate::midi_messages::note::Note;
 
 
 pub(crate) struct DeviceOut {
-    pub device: Device,
-    pub queue: Vec<MidiMessageWithDelta>,
+    device: Device,
+    pub output_queue: Vec<MidiMessageWithDelta>,
 }
 
 
@@ -26,35 +26,52 @@ impl DeviceOut {
     pub fn new(name: String) -> Self {
         Self {
             device: Device::new(name),
-            queue: vec![]
+            output_queue: vec![]
         }
     }
 
     pub fn update(&mut self, midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) {
-        self.queue.push(midi_message);
+        self.output_queue.push(midi_message);
         self.device.update(midi_message, current_time, id);
     }
 
     #[cfg(not(feature="midi_hack_transmission"))]
     pub fn flush_to(&mut self, reception_time: u64, midi_output_sender: &Sender<WorkerCommand>) {
-        if self.queue.is_empty() {
+        if self.output_queue.is_empty() {
             return
         }
 
         {
             midi_output_sender.try_send(
                 WorkerCommand::SendToMidiOutput {
-                    reception_time, messages: take(&mut self.queue)
+                    reception_time, messages: take(&mut self.output_queue)
                 }).unwrap_or_else(
                 |err| error!("Could not send to the controller worker {}", err)
             );
         }
     }
 
+    pub fn update_pitch(&mut self, note_id: usize, target_pitch: u8, delta_frames: u16, current_time: usize) {
+        match self.device.notes.values().find(|note| note.id == note_id) {
+            None => {}
+            Some(note) => {
+                let raw_message: RawMessage = PitchBend {
+                    channel: note.channel,
+                    millisemitones: (target_pitch - note.pitch) as i32 * 1000
+                }.into();
+                self.update(MidiMessageWithDelta {
+                    delta_frames,
+                    data: raw_message
+                }, current_time, None);
+            }
+        };
+    }
+
     pub fn push_note_off(&mut self, note_id: usize, velocity_off: u8, delta_frames: u16, current_time: usize) {
         let note = match self.device.notes.values().find(|note| note.id == note_id) {
             None => {
-                // info!("Cannot find note to stop: {:02x?}", note_id);
+                #[cfg(feature="device_debug")]
+                info!("Cannot find note to stop: {:02x?}", note_id);
                 return;
             }
             Some(note) => note

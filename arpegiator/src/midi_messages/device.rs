@@ -62,9 +62,10 @@ pub enum DeviceChange {
     AddNote { time: usize, note: Note },
     RemoveNote { time: usize, note: Note },
     NoteExpressionChange { time: usize, expression: Expression, note: Note },
+    // replacing happens when a note on is triggered for a note and channel that is already on
     ReplaceNote { time: usize, old_note: Note, new_note: Note },
     CCChange { time: usize, cc: CC },
-    None { time: usize },
+    Ignored { time: usize },
 }
 
 
@@ -76,7 +77,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::NoteExpressionChange { time, .. } => *time,
             DeviceChange::ReplaceNote { time, .. } => *time,
             DeviceChange::CCChange { time, .. } => *time,
-            DeviceChange::None { time, .. } => *time
+            DeviceChange::Ignored { time, .. } => *time
         }
     }
 
@@ -89,7 +90,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::NoteExpressionChange { note, .. } => note.id,
             DeviceChange::ReplaceNote { new_note: note, .. } => note.id,
             DeviceChange::CCChange { .. } => 0,
-            DeviceChange::None { .. } => 0
+            DeviceChange::Ignored { .. } => 0
         }
     }
 }
@@ -159,7 +160,7 @@ impl Device {
                 match self.notes.remove(&index) {
                     None => {
                         info!("Attempt to remove note, but it was not found {:02X?}", index);
-                        DeviceChange::None { time }
+                        DeviceChange::Ignored { time }
                     }
                     Some(mut old_note) => {
                         //info!("Removed note {:02X?}", index);
@@ -202,7 +203,7 @@ impl Device {
                         };
                     }
                 }
-                DeviceChange::None { time }
+                DeviceChange::Ignored { time }
             },
             MidiMessageType::AfterTouchMessage(message) => {
                 // redundant with pressure, but that's the message that bitwig will properly handle for by-note
@@ -219,7 +220,7 @@ impl Device {
                         };
                     }
                 }
-                DeviceChange::None { time }
+                DeviceChange::Ignored { time }
             },
             MidiMessageType::PitchBendMessage(message) => {
                 self.channels[message.channel as usize].pitchbend = message.millisemitones;
@@ -235,10 +236,10 @@ impl Device {
                         };
                     }
                 }
-                DeviceChange::None { time }
+                DeviceChange::Ignored { time }
             }
-            MidiMessageType::UnsupportedChannelMessage(_) => DeviceChange::None { time },
-            MidiMessageType::Unsupported => DeviceChange::None { time },
+            MidiMessageType::UnsupportedChannelMessage(_) => DeviceChange::Ignored { time },
+            MidiMessageType::Unsupported => DeviceChange::Ignored { time },
 
         }
     }
