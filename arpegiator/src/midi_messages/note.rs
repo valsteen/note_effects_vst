@@ -46,6 +46,19 @@ impl PartialOrd for Note {
 }
 
 
+impl PartialOrd for NoteIndex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let cmp = self.pitch.cmp(&other.pitch);
+
+        if cmp != Ordering::Equal {
+            Some(cmp)
+        } else {
+            Some(self.channel.cmp(&other.channel))
+        }
+    }
+}
+
+
 impl PartialEq for Note {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id

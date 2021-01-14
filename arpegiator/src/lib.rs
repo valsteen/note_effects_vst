@@ -36,11 +36,12 @@ use {
     mach::mach_time::mach_absolute_time
 };
 
-use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT};
+use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT, PitchBendValues};
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
 use util::system::Uuid;
 use crate::midi_messages::timed_event::TimedEvent;
+use std::cmp::Ordering;
 
 #[cfg(not(feature="midi_hack_transmission"))] mod workers;
 #[cfg(not(feature="midi_hack_transmission"))] mod system;
@@ -349,18 +350,36 @@ impl Plugin for ArpegiatorPlugin {
             match change {
                 SourceChange::NoteChange(change) => {
                     match change {
-                        DeviceChange::AddNote { note , .. } => {
-                            let note_position = self.notes_device_in.notes.values().position(|n| {
-                                n.pitch < note.pitch
-                            });
-
-                            if let Some(position) = note_position {
-                                for pattern in self.pattern_device.at(position as u8) {
-                                    // careful here, the output note can have an octave difference
-                                    if let Some(target_pitch) =  pattern.transpose(note.pitch) {
-                                        self.device_out.update_pitch(pattern.id, target_pitch, delta_frames,
-                                                                     current_time_in_samples);
+                        DeviceChange::AddNote { .. } => {
+                            match self.parameters.get_pitchbend() {
+                                PitchBendValues::Off => {}
+                                PitchBendValues::DurationToReachTarget(_) => {}
+                                PitchBendValues::Immediate => {
+                                    // incoming note can move before other notes, so we have to recalculate pitches of
+                                    // all playing notes
+                                    for (position, note) in self.notes_device_in.notes.values().sorted_by(|item1,
+                                                                                                          item2| {
+                                        let pitch_cmp = item1.pitch.cmp(&item2.pitch);
+                                        match pitch_cmp {
+                                            Ordering::Equal => {
+                                                item1.channel.cmp(&item2.channel)
+                                            }
+                                            _ => pitch_cmp
+                                        }
+                                    }).enumerate() {
+                                        #[cfg(feature="device_debug")]
+                                        info!("note will be applied to pattern {}", position);
+                                        for pattern in self.pattern_device.at(position as u8) {
+                                            if let Some(target_pitch) =  pattern.transpose(note.pitch) {
+                                                #[cfg(feature="device_debug")]
+                                                info!("Applying pitchbend to pattern {}, at position {}",
+                                                      pattern.id, target_pitch);
+                                                self.device_out.update_pitch(pattern.id, target_pitch, delta_frames,
+                                                                             current_time_in_samples);
+                                            }
+                                        }
                                     }
+
                                 }
                             }
                         }

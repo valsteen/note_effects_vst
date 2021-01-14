@@ -33,6 +33,10 @@ impl DeviceOut {
     pub fn update(&mut self, midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) {
         self.output_queue.push(midi_message);
         self.device.update(midi_message, current_time, id);
+        if !self.device.notes.is_empty() {
+            #[cfg(feature="device_debug")]
+            info!("Device out state after update: {:2X?}", self.device.notes)
+        }
     }
 
     #[cfg(not(feature="midi_hack_transmission"))]
@@ -53,11 +57,15 @@ impl DeviceOut {
 
     pub fn update_pitch(&mut self, note_id: usize, target_pitch: u8, delta_frames: u16, current_time: usize) {
         match self.device.notes.values().find(|note| note.id == note_id) {
-            None => {}
+            None => {
+                info!("Cannot find note to pitchbend. Required note_id: {}. Current notes: {:02X?}",
+                      note_id, self.device.notes.values()
+                )
+            }
             Some(note) => {
                 let raw_message: RawMessage = PitchBend {
                     channel: note.channel,
-                    millisemitones: (target_pitch - note.pitch) as i32 * 1000
+                    millisemitones: (target_pitch as i32 - note.pitch as i32) * 1000
                 }.into();
                 self.update(MidiMessageWithDelta {
                     delta_frames,

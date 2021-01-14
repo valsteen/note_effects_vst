@@ -90,7 +90,7 @@ impl NoteGeneratorPluginParameters {
     #[inline]
     fn get_pitchbend_label(&self) -> String {
         let semitones = self.get_u14_parameter(Parameter::PitchBend);
-        format!("{:.2} semitones", ((semitones as i32 * 96000 / 16383) - 48000) as f32 / 1000.)
+        format!("{:.2} semitones", ((semitones as i32 * 96000 / 16384) - 48000) as f32 / 1000.)
     }
 
     #[inline]

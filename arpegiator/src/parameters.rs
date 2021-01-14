@@ -47,7 +47,7 @@ think about those cases:
 // note: if pitchbend is not off, it makes sense to consume note pitchbend as is
 // ideally while a note eposes its pitch and a pitchbend value, a method should directly tell the pitch in
 // millisemitones relative to 0 ( C-2 )
-enum PitchBendValues {
+pub(crate) enum PitchBendValues {
     Off,  // no pitchbend, means same pitch until pattern ends
     DurationToReachTarget(f32),
     Immediate
@@ -127,6 +127,17 @@ impl ArpegiatorParameters {
         parameters.set_parameter(Parameter::PatternLegato.into(), 1.);
         parameters
     }
+
+    pub fn get_pitchbend(&self) -> PitchBendValues {
+        match self.get_parameter(Parameter::Pitchbend.into()) {
+            x if x <= 0. => PitchBendValues::Immediate,
+            x if x >= 1. => PitchBendValues::Off,
+            _ => {
+                let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 1., 80.);
+                PitchBendValues::DurationToReachTarget(value)
+            }
+        }
+    }
 }
 
 
@@ -144,18 +155,11 @@ impl PluginParameters for ArpegiatorParameters {
                     false => "Off"
                 }.to_string()
             }
-            Parameter::Pitchbend => {  // TODO set default to 1
-                match self.get_parameter(index) {
-                    x if x <= 0. => {
-                        "Immediate".into()
-                    }
-                    x if x >= 1. => {
-                        "Off".into()
-                    }
-                    _ => {
-                        let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 1., 80.);
-                        duration_display(value)
-                    }
+            Parameter::Pitchbend => {
+                match self.get_pitchbend() {
+                    PitchBendValues::Off => "Off".into(),
+                    PitchBendValues::DurationToReachTarget(value) => duration_display(value),
+                    PitchBendValues::Immediate => "Immediate".into()
                 }
             }
         }

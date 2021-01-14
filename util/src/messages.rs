@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{info,error};
+
 use vst::event::Event::Midi;
 use vst::event::{Event, MidiEvent};
 
@@ -180,7 +183,7 @@ impl Into<RawMessage> for PitchBend {
     fn into(self) -> RawMessage {
         // 96000 millisemitones are expressed over the possible values of 14 bits ( 16384 )
         // which never gets us an exact integer amount of semitones
-        let value = ((self.millisemitones + 48000) * 16383) / 96000;
+        let value = ((self.millisemitones + 48000) * 16384) / 96000;
         let msb = value >> 7;
         let lsb = value & 0x7F;
         [self.channel + PITCHBEND, lsb as u8, msb as u8].into()
@@ -192,7 +195,7 @@ impl From<RawMessage> for PitchBend {
         let lsb : i32 = data[1] as i32;
         let msb : i32 = data[2] as i32;
         let value = lsb + (msb << 7);
-        let millisemitones = (value * 96000 / 16383) - 48000;
+        let millisemitones = (value * 96000 / 16384) - 48000;
 
         PitchBend {
             channel: data[0] & 0x0F,
