@@ -40,6 +40,7 @@ use crate::midi_messages::timed_event::TimedEvent;
 use crate::parameters::{ArpegiatorParameters, PitchBendValues, PARAMETER_COUNT, Parameter};
 use util::system::Uuid;
 use util::parameters::ParameterConversion;
+use util::constants::PITCHBEND;
 
 #[cfg(not(feature = "midi_hack_transmission"))]
 mod system;
@@ -371,10 +372,13 @@ impl Plugin for ArpegiatorPlugin {
                 }
                 let pattern_group = pattern_group.into_iter().filter(|pattern| {
                     let status = pattern.data.get_bytes()[0] & 0xF0;
+                    let channel = pattern.data.get_bytes()[0] & 0x0F ;
+
                     if status == 0x80 || status == 0x90 {
-                        let channel = pattern.data.get_bytes()[0] & 0x0F ;
                         let pitch = pattern.data.get_bytes()[1];
                         !legato_patterns.contains(&[channel, pitch])
+                    } else if status == PITCHBEND {
+                        legato_patterns.iter().find(|channel_pitch| channel_pitch[0] == channel).is_none()
                     } else {
                         true
                     }
