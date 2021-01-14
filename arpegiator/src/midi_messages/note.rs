@@ -14,23 +14,20 @@ pub struct Note {
 
     pub pressure: u8,
     pub timbre: u8,
-    pub pitchbend: i32,  // in millisemitones
+    pub pitchbend: i32, // in millisemitones
 }
-
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteIndex {
     pub channel: u8,
-    pub pitch: u8
+    pub pitch: u8,
 }
-
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CCIndex {
     pub channel: u8,
-    pub index: u8
+    pub index: u8,
 }
-
 
 impl PartialOrd for Note {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -45,7 +42,6 @@ impl PartialOrd for Note {
     }
 }
 
-
 impl PartialOrd for NoteIndex {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let cmp = self.pitch.cmp(&other.pitch);
@@ -57,7 +53,6 @@ impl PartialOrd for NoteIndex {
         }
     }
 }
-
 
 impl PartialEq for Note {
     fn eq(&self, other: &Self) -> bool {

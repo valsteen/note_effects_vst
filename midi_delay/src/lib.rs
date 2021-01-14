@@ -3,8 +3,8 @@ mod parameters;
 #[macro_use]
 extern crate vst;
 
-use std::sync::Arc;
 use std::cell::RefCell;
+use std::sync::Arc;
 use vst::api::Events;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::Event;
@@ -16,10 +16,7 @@ use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
 
-
-
 plugin_main!(MidiDelay);
-
 
 pub struct MidiDelay {
     current_time_in_samples: usize,
@@ -28,7 +25,6 @@ pub struct MidiDelay {
     sample_rate: f32,
     send_buffer: RefCell<SendEventBuffer>,
 }
-
 
 impl Default for MidiDelay {
     fn default() -> Self {
@@ -41,7 +37,6 @@ impl Default for MidiDelay {
         }
     }
 }
-
 
 impl MidiDelay {
     fn increase_time_in_samples(&mut self, samples: usize) {
@@ -60,22 +55,22 @@ impl MidiDelay {
 
     fn send_events(&mut self, samples: usize) {
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
-            let (next_message_queue, events)
-                = process_scheduled_events(
+            let (next_message_queue, events) = process_scheduled_events(
                 samples,
                 self.current_time_in_samples,
                 &self.message_queue,
                 0,
                 false,
-                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0
-                );
+                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0,
+            );
 
             self.message_queue = next_message_queue;
-            self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
+            self.send_buffer
+                .borrow_mut()
+                .send_events(events, &mut host_callback_lock.host);
         }
     }
 }
-
 
 impl Plugin for MidiDelay {
     fn get_info(&self) -> Info {
@@ -118,7 +113,7 @@ impl Plugin for MidiDelay {
             SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | Bypass => Yes,
             MidiProgramNames | ReceiveSysExEvent | MidiSingleNoteTuningChange => No,
             Other(_) => Maybe,
-            _ => Maybe
+            _ => Maybe,
         }
     }
 
@@ -136,15 +131,17 @@ impl Plugin for MidiDelay {
     }
 
     fn process_events(&mut self, events: &Events) {
-        let midi_delay = self.seconds_to_samples(
-            self.parameters.get_exponential_scale_parameter(Parameter::Delay, 1., 80.)
-        );
+        let midi_delay = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
+            Parameter::Delay,
+            1.,
+            80.,
+        ));
 
         for event in events.events() {
             let midi_event = if let Event::Midi(midi_event) = event {
                 midi_event
             } else {
-                continue
+                continue;
             };
 
             if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(&midi_event.data) {
@@ -168,11 +165,10 @@ impl Plugin for MidiDelay {
             } else {
                 self.message_queue.insert_message(
                     midi_event.data,
-                    midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live
+                    midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+                    MessageReason::Live,
                 );
             }
-
-
         }
     }
 }

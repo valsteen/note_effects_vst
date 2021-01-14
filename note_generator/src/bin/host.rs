@@ -49,23 +49,14 @@ fn main() {
          VST ID: {}\n\t\
          Version: {}\n\t\
          Initial Delay: {} samples",
-        info.name,
-        info.vendor,
-        info.presets,
-        info.parameters,
-        info.unique_id,
-        info.version,
-        info.initial_delay
+        info.name, info.vendor, info.presets, info.parameters, info.unique_id, info.version, info.initial_delay
     );
 
     // Initialize the instance
     instance.init();
 
     println!("{}", instance.can_do(CanDo::Offline) == Supported::No);
-    println!(
-        "{}",
-        instance.can_do(CanDo::ReceiveEvents) == Supported::Yes
-    );
+    println!("{}", instance.can_do(CanDo::ReceiveEvents) == Supported::Yes);
     let mut host_buffer: HostBuffer<f32> = HostBuffer::new(2, 2);
     let inputs = vec![vec![0.0; 1000]; 2];
     let mut outputs = vec![vec![0.0; 1000]; 2];

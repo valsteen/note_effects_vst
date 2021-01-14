@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use {
+    log::{error, info},
     std::mem::take,
-    log::{error, info}
 };
 
 use std::os::raw::c_void;
@@ -16,46 +16,41 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 use midi_messages::device::{Device, DeviceChange, Expression};
 use midi_messages::device_out::DeviceOut;
 use util::logging::logging_setup;
-use util::messages::{PitchBend, Timbre};
 #[cfg(feature = "pressure_as_aftertouch")]
 use util::messages::AfterTouch;
 #[cfg(feature = "pressure_as_channel_pressure")]
 use util::messages::Pressure;
 #[cfg(feature = "pressure_as_cc7")]
 use util::messages::CC;
+use util::messages::{PitchBend, Timbre};
 use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::raw_message::RawMessage;
-#[cfg(not(feature="midi_hack_transmission"))]
-use {
-    workers::main_worker::{create_worker_thread, WorkerChannels, WorkerCommand},
-};
+#[cfg(not(feature = "midi_hack_transmission"))]
+use workers::main_worker::{create_worker_thread, WorkerChannels, WorkerCommand};
 
-#[cfg(not(feature="midi_hack_transmission"))]
+#[cfg(not(feature = "midi_hack_transmission"))]
 #[cfg(target_os = "macos")]
-use {
-    mach::mach_time::mach_absolute_time
-};
+use mach::mach_time::mach_absolute_time;
 
-use crate::parameters::{ArpegiatorParameters, PARAMETER_COUNT, PitchBendValues};
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
-use util::system::Uuid;
 use crate::midi_messages::timed_event::TimedEvent;
+use crate::parameters::{ArpegiatorParameters, PitchBendValues, PARAMETER_COUNT};
 use std::cmp::Ordering;
+use util::system::Uuid;
 
-#[cfg(not(feature="midi_hack_transmission"))] mod workers;
-#[cfg(not(feature="midi_hack_transmission"))] mod system;
+#[cfg(not(feature = "midi_hack_transmission"))]
+mod system;
+#[cfg(not(feature = "midi_hack_transmission"))]
+mod workers;
 
 mod midi_messages;
 mod parameters;
 
-
 #[macro_use]
 extern crate vst;
 
-
 plugin_main!(ArpegiatorPlugin);
-
 
 pub struct ArpegiatorPlugin {
     events: Vec<MidiEvent>,
@@ -75,22 +70,24 @@ pub struct ArpegiatorPlugin {
     resumed: bool,
 }
 
-
 impl ArpegiatorPlugin {
     #[cfg(not(feature = "midi_hack_transmission"))]
     fn close_worker(&mut self, event_id: Uuid) {
         if let Some(worker_channels) = take(&mut self.worker_channels) {
-            #[cfg(feature = "worker_debug")] info!("[{}] stopping workers", event_id);
+            #[cfg(feature = "worker_debug")]
+            info!("[{}] stopping workers", event_id);
             if let Err(e) = worker_channels.command_sender.try_send(WorkerCommand::Stop(event_id)) {
                 error!("[{}] Error while closing worker channel : {:?}", event_id, e)
             }
             if let Err(err) = worker_channels.worker.join() {
-                error!("[{}] Error while waiting for worker thread to finish {:?}", event_id, err)
+                error!(
+                    "[{}] Error while waiting for worker thread to finish {:?}",
+                    event_id, err
+                )
             }
         }
     }
 }
-
 
 impl Default for ArpegiatorPlugin {
     fn default() -> Self {
@@ -113,7 +110,6 @@ impl Default for ArpegiatorPlugin {
         }
     }
 }
-
 
 impl Plugin for ArpegiatorPlugin {
     fn get_info(&self) -> Info {
@@ -142,19 +138,20 @@ impl Plugin for ArpegiatorPlugin {
 
     fn new(host: HostCallback) -> Self {
         logging_setup();
-        info!("{} \
+        info!(
+            "{} \
         pressure_as_cc7: {} \
         pressure_as_aftertouch: {} \
         pressure_as_channel_pressure: {} \
         midi_hack_transmission {} \
         ",
-              build_info::format!("{{{} v{} built with {} at {}}} ",
+            build_info::format!("{{{} v{} built with {} at {}}} ",
               $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
-              cfg!(feature = "pressure_as_cc7"),
-              cfg!(feature = "pressure_as_aftertouch"),
-              cfg!(feature = "pressure_as_channel_pressure"),
-              cfg!(feature = "midi_hack_transmission"),
-              );
+            cfg!(feature = "pressure_as_cc7"),
+            cfg!(feature = "pressure_as_aftertouch"),
+            cfg!(feature = "pressure_as_channel_pressure"),
+            cfg!(feature = "midi_hack_transmission"),
+        );
 
         ArpegiatorPlugin {
             events: vec![],
@@ -176,9 +173,12 @@ impl Plugin for ArpegiatorPlugin {
     }
 
     fn set_sample_rate(&mut self, rate: f32) {
-        #[cfg(not(feature="midi_hack_transmission"))]
+        #[cfg(not(feature = "midi_hack_transmission"))]
         if let Some(workers_channel) = &self.worker_channels {
-            workers_channel.command_sender.try_send(WorkerCommand::SetSampleRate(rate)).unwrap()
+            workers_channel
+                .command_sender
+                .try_send(WorkerCommand::SetSampleRate(rate))
+                .unwrap()
         };
         self.sample_rate = rate
     }
@@ -186,9 +186,12 @@ impl Plugin for ArpegiatorPlugin {
     fn set_block_size(&mut self, size: i64) {
         self.block_size = size;
 
-        #[cfg(not(feature="midi_hack_transmission"))]
+        #[cfg(not(feature = "midi_hack_transmission"))]
         if let Some(workers_channel) = &self.worker_channels {
-            workers_channel.command_sender.try_send(WorkerCommand::SetBlockSize(size)).unwrap()
+            workers_channel
+                .command_sender
+                .try_send(WorkerCommand::SetBlockSize(size))
+                .unwrap()
         };
     }
 
@@ -201,7 +204,8 @@ impl Plugin for ArpegiatorPlugin {
 
         let event_id = Uuid::new_v4();
 
-        #[cfg(feature = "worker_debug")] info!("[{}] resume: enter", event_id);
+        #[cfg(feature = "worker_debug")]
+        info!("[{}] resume: enter", event_id);
 
         self.current_time_in_samples = 0;
 
@@ -209,8 +213,14 @@ impl Plugin for ArpegiatorPlugin {
         {
             self.close_worker(event_id);
             let worker_channels = create_worker_thread();
-            worker_channels.command_sender.try_send(WorkerCommand::SetPort(self.parameters.get_port(), event_id)).unwrap();
-            worker_channels.command_sender.try_send(WorkerCommand::SetSampleRate(self.sample_rate)).unwrap();
+            worker_channels
+                .command_sender
+                .try_send(WorkerCommand::SetPort(self.parameters.get_port(), event_id))
+                .unwrap();
+            worker_channels
+                .command_sender
+                .try_send(WorkerCommand::SetSampleRate(self.sample_rate))
+                .unwrap();
 
             self.worker_channels = match self.parameters.worker_commands.lock() {
                 Ok(mut worker_commands) => {
@@ -224,7 +234,8 @@ impl Plugin for ArpegiatorPlugin {
             };
         }
 
-        #[cfg(feature = "worker_debug")] info!("[{}] resume: exit", event_id);
+        #[cfg(feature = "worker_debug")]
+        info!("[{}] resume: exit", event_id);
     }
 
     fn suspend(&mut self) {
@@ -238,14 +249,16 @@ impl Plugin for ArpegiatorPlugin {
 
         #[cfg(not(feature = "midi_hack_transmission"))]
         {
-            #[cfg(feature = "worker_debug")] info!("[{}] suspend enter", event_id);
+            #[cfg(feature = "worker_debug")]
+            info!("[{}] suspend enter", event_id);
             if let Ok(mut worker_commands) = self.parameters.worker_commands.lock() {
                 *worker_commands = None
             }
 
             self.close_worker(event_id);
         }
-        #[cfg(feature = "worker_debug")] info!("[{}] suspend exit", event_id);
+        #[cfg(feature = "worker_debug")]
+        info!("[{}] suspend exit", event_id);
     }
 
     fn vendor_specific(&mut self, index: i32, value: isize, ptr: *mut c_void, opt: f32) -> isize {
@@ -262,7 +275,13 @@ impl Plugin for ArpegiatorPlugin {
         use vst::plugin::CanDo::*;
 
         match can_do {
-            SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | MidiSingleNoteTuningChange | MidiKeyBasedInstrumentControl => Yes,
+            SendEvents
+            | SendMidiEvent
+            | ReceiveEvents
+            | ReceiveMidiEvent
+            | Offline
+            | MidiSingleNoteTuningChange
+            | MidiKeyBasedInstrumentControl => Yes,
             Other(s) => {
                 if s == "MPE" {
                     Yes
@@ -278,30 +297,34 @@ impl Plugin for ArpegiatorPlugin {
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         #[cfg(not(feature = "midi_hack_transmission"))]
         let local_time = {
-            #[cfg(target_os = "macos")] unsafe { mach_absolute_time() }
-            #[cfg(target_os = "linux")] 0
+            #[cfg(target_os = "macos")]
+            unsafe {
+                mach_absolute_time()
+            }
+            #[cfg(target_os = "linux")]
+            0
         };
 
         #[cfg(not(feature = "midi_hack_transmission"))]
         let pattern_messages = {
             match self.worker_channels.as_ref() {
                 None => vec![],
-                Some(socket_channels) => {
-                    match socket_channels.pattern_receiver.try_recv() {
-                        Ok(payload) => {
-                            #[cfg(feature = "device_debug")]
-                            info!("[{}] received patterns : {:02X?}", self.current_time_in_samples, payload);
+                Some(socket_channels) => match socket_channels.pattern_receiver.try_recv() {
+                    Ok(payload) => {
+                        #[cfg(feature = "device_debug")]
+                        info!(
+                            "[{}] received patterns : {:02X?}",
+                            self.current_time_in_samples, payload
+                        );
 
-                            payload.messages
-                        }
-                        Err(_) => vec![]
+                        payload.messages
                     }
-                }
+                    Err(_) => vec![],
+                },
             }
         };
         #[cfg(not(feature = "midi_hack_transmission"))]
         let events = &self.events;
-
 
         // from here we cannot accurately tell when the buffer we're building will actually play
         // so our best guest will be the earliest :
@@ -314,15 +337,18 @@ impl Plugin for ArpegiatorPlugin {
         let notes_device_in = &mut self.notes_device_in;
 
         #[cfg(feature = "midi_hack_transmission")]
-        let (pattern_messages, notes) : (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
-            let (mut patterns, mut notes) : (Vec<MidiEvent>, Vec<MidiEvent>) = self.events.drain(..).partition(
-                |item| item.data[0] < 0x80);
+        let (pattern_messages, notes): (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
+            let (mut patterns, mut notes): (Vec<MidiEvent>, Vec<MidiEvent>) =
+                self.events.drain(..).partition(|item| item.data[0] < 0x80);
             notes.sort_by_key(|x| x.delta_frames);
             patterns.sort_by_key(|x| x.delta_frames);
-            let patterns = patterns.iter().map(|event| MidiMessageWithDelta {
-                delta_frames: event.delta_frames as u16,
-                data: RawMessage::from([event.data[0] + 0x80, event.data[1], event.data[2]])
-            }).collect_vec();
+            let patterns = patterns
+                .iter()
+                .map(|event| MidiMessageWithDelta {
+                    delta_frames: event.delta_frames as u16,
+                    data: RawMessage::from([event.data[0] + 0x80, event.data[1], event.data[2]]),
+                })
+                .collect_vec();
             (patterns, notes)
         };
 
@@ -357,29 +383,37 @@ impl Plugin for ArpegiatorPlugin {
                                 PitchBendValues::Immediate => {
                                     // incoming note can move before other notes, so we have to recalculate pitches of
                                     // all playing notes
-                                    for (position, note) in self.notes_device_in.notes.values().sorted_by(|item1,
-                                                                                                          item2| {
-                                        let pitch_cmp = item1.pitch.cmp(&item2.pitch);
-                                        match pitch_cmp {
-                                            Ordering::Equal => {
-                                                item1.channel.cmp(&item2.channel)
+                                    for (position, note) in self
+                                        .notes_device_in
+                                        .notes
+                                        .values()
+                                        .sorted_by(|item1, item2| {
+                                            let pitch_cmp = item1.pitch.cmp(&item2.pitch);
+                                            match pitch_cmp {
+                                                Ordering::Equal => item1.channel.cmp(&item2.channel),
+                                                _ => pitch_cmp,
                                             }
-                                            _ => pitch_cmp
-                                        }
-                                    }).enumerate() {
-                                        #[cfg(feature="device_debug")]
+                                        })
+                                        .enumerate()
+                                    {
+                                        #[cfg(feature = "device_debug")]
                                         info!("note will be applied to pattern {}", position);
                                         for pattern in self.pattern_device.at(position as u8) {
-                                            if let Some(target_pitch) =  pattern.transpose(note.pitch) {
-                                                #[cfg(feature="device_debug")]
-                                                info!("Applying pitchbend to pattern {}, at position {}",
-                                                      pattern.id, target_pitch);
-                                                self.device_out.update_pitch(pattern.id, target_pitch, delta_frames,
-                                                                             current_time_in_samples);
+                                            if let Some(target_pitch) = pattern.transpose(note.pitch) {
+                                                #[cfg(feature = "device_debug")]
+                                                info!(
+                                                    "Applying pitchbend to pattern {}, at position {}",
+                                                    pattern.id, target_pitch
+                                                );
+                                                self.device_out.update_pitch(
+                                                    pattern.id,
+                                                    target_pitch,
+                                                    delta_frames,
+                                                    current_time_in_samples,
+                                                );
                                             }
                                         }
                                     }
-
                                 }
                             }
                         }
@@ -388,14 +422,15 @@ impl Plugin for ArpegiatorPlugin {
                         DeviceChange::ReplaceNote { .. } => {}
 
                         DeviceChange::CCChange { cc: _cc, time: _time } => {
-                            #[cfg(feature = "forward_note_cc")] {
-                                let message = MidiMessageWithDelta {
-                                    delta_frames,
-                                    data: Into::<RawMessage>::into(_cc).into(),
-                                };
+                            #[cfg(feature = "forward_note_cc")]
+                                {
+                                    let message = MidiMessageWithDelta {
+                                        delta_frames,
+                                        data: Into::<RawMessage>::into(_cc).into(),
+                                    };
 
-                                let _ = self.device_out.update(message, current_time_in_samples, None);
-                            }
+                                    let _ = self.device_out.update(message, current_time_in_samples, None);
+                                }
                         }
                         DeviceChange::Ignored { .. } => {}
                     }
@@ -406,44 +441,72 @@ impl Plugin for ArpegiatorPlugin {
                             // TODO "hold notes" logic
                             match self.notes_device_in.nth(pattern.index as usize) {
                                 None => {}
-                                Some(note) => self.device_out.push_note_on(&pattern, &note, current_time_in_samples)
+                                Some(note) => self.device_out.push_note_on(&pattern, &note, current_time_in_samples),
                             }
                         }
 
-                        PatternDeviceChange::PatternExpressionChange { expression, pattern, .. } => {
+                        PatternDeviceChange::PatternExpressionChange {
+                            expression, pattern, ..
+                        } => {
                             let raw_message: Option<RawMessage> = match expression {
-                                Expression::Timbre => {
-                                    Some(Timbre { channel: pattern.channel, value: pattern.timbre }.into())
-                                }
+                                Expression::Timbre => Some(
+                                    Timbre {
+                                        channel: pattern.channel,
+                                        value: pattern.timbre,
+                                    }
+                                    .into(),
+                                ),
                                 Expression::PitchBend => {
                                     // TODO should change the pitch as is, meaning it's the pitchbend is just added to
                                     // the result, independently from the notes we're supposed to match
                                     // the result should be: target note + pattern pitchbend
-                                    Some(PitchBend { channel: pattern.channel, millisemitones: pattern.pitchbend }.into())
+                                    Some(
+                                        PitchBend {
+                                            channel: pattern.channel,
+                                            millisemitones: pattern.pitchbend,
+                                        }
+                                        .into(),
+                                    )
                                 }
                                 Expression::Pressure | Expression::AfterTouch => {
-                                    #[cfg(feature = "pressure_as_channel_pressure")] {
-                                        Some(Pressure { channel: pattern.channel, value: pattern.pressure }.into())
+                                    #[cfg(feature = "pressure_as_channel_pressure")]
+                                    {
+                                        Some(
+                                            Pressure {
+                                                channel: pattern.channel,
+                                                value: pattern.pressure,
+                                            }
+                                            .into(),
+                                        )
                                     }
 
-                                    #[cfg(any(feature = "pressure_as_aftertouch", feature="pressure_as_cc7"))] {
+                                    #[cfg(any(feature = "pressure_as_aftertouch", feature = "pressure_as_cc7"))]
+                                    {
                                         match self.notes_device_in.nth(pattern.index as usize) {
                                             None => None,
                                             Some(note) => {
                                                 if let Some(_pitch) = pattern.transpose(note.pitch) {
-                                                    #[cfg(feature="pressure_as_aftertouch")] {
-                                                        Some(AfterTouch {
-                                                            channel: pattern.channel,
-                                                            _pitch,
-                                                            value: pattern.pressure,
-                                                        }.into())
+                                                    #[cfg(feature = "pressure_as_aftertouch")]
+                                                    {
+                                                        Some(
+                                                            AfterTouch {
+                                                                channel: pattern.channel,
+                                                                _pitch,
+                                                                value: pattern.pressure,
+                                                            }
+                                                            .into(),
+                                                        )
                                                     }
-                                                    #[cfg(feature="pressure_as_cc7")] {
-                                                        Some(CC {
-                                                            channel: pattern.channel,
-                                                            cc: 7,
-                                                            value: pattern.pressure,
-                                                        }.into())
+                                                    #[cfg(feature = "pressure_as_cc7")]
+                                                    {
+                                                        Some(
+                                                            CC {
+                                                                channel: pattern.channel,
+                                                                cc: 7,
+                                                                value: pattern.pressure,
+                                                            }
+                                                            .into(),
+                                                        )
                                                     }
                                                 } else {
                                                     None
@@ -455,24 +518,51 @@ impl Plugin for ArpegiatorPlugin {
                             };
 
                             if let Some(raw_message) = raw_message {
-                                self.device_out.update(MidiMessageWithDelta { delta_frames, data: raw_message },
-                                                       current_time_in_samples, None);
+                                self.device_out.update(
+                                    MidiMessageWithDelta {
+                                        delta_frames,
+                                        data: raw_message,
+                                    },
+                                    current_time_in_samples,
+                                    None,
+                                );
                             }
                         }
                         PatternDeviceChange::RemovePattern { pattern, .. } => {
-                            self.device_out.push_note_off(pattern.id, pattern.velocity_off,
-                                                          delta_frames, current_time_in_samples);
+                            self.device_out.push_note_off(
+                                pattern.id,
+                                pattern.velocity_off,
+                                delta_frames,
+                                current_time_in_samples,
+                            );
                         }
-                        PatternDeviceChange::ReplacePattern { old_pattern, new_pattern, .. } => {
-                            self.device_out.push_note_off(old_pattern.id, old_pattern.velocity_off,
-                                                          delta_frames, current_time_in_samples);
+                        PatternDeviceChange::ReplacePattern {
+                            old_pattern,
+                            new_pattern,
+                            ..
+                        } => {
+                            self.device_out.push_note_off(
+                                old_pattern.id,
+                                old_pattern.velocity_off,
+                                delta_frames,
+                                current_time_in_samples,
+                            );
 
-                            let note = match self.notes_device_in.notes.values().sorted().nth(new_pattern.index as usize) {
-                                None => { continue; }
-                                Some(note) => note
+                            let note = match self
+                                .notes_device_in
+                                .notes
+                                .values()
+                                .sorted()
+                                .nth(new_pattern.index as usize)
+                            {
+                                None => {
+                                    continue;
+                                }
+                                Some(note) => note,
                             };
 
-                            self.device_out.push_note_on(&new_pattern, note, current_time_in_samples);
+                            self.device_out
+                                .push_note_on(&new_pattern, note, current_time_in_samples);
                         }
                         PatternDeviceChange::CC { cc: _cc, time: _time } => {
                             #[cfg(feature = "forward_pattern_cc")] {
@@ -488,15 +578,17 @@ impl Plugin for ArpegiatorPlugin {
                     }
                 }
             }
-        };
+        }
 
         #[cfg(not(feature = "midi_hack_transmission"))]
         if let Some(worker_channels) = self.worker_channels.as_ref() {
             self.device_out.flush_to(local_time, &worker_channels.command_sender)
         }
 
-        #[cfg(feature = "midi_hack_transmission")] {
-            self.send_buffer.send_events(take(&mut self.device_out.output_queue), &mut self._host);
+        #[cfg(feature = "midi_hack_transmission")]
+        {
+            self.send_buffer
+                .send_events(take(&mut self.device_out.output_queue), &mut self._host);
         }
 
         self.events.clear();
@@ -507,7 +599,8 @@ impl Plugin for ArpegiatorPlugin {
     fn process_events(&mut self, events: &api::Events) {
         for e in events.events() {
             if let Event::Midi(e) = e {
-                #[cfg(feature = "device_debug")] info!("Received {:2X?}", e.data);
+                #[cfg(feature = "device_debug")]
+                info!("Received {:2X?}", e.data);
                 self.events.push(e);
             }
         }
@@ -518,7 +611,7 @@ impl Plugin for ArpegiatorPlugin {
     }
 }
 
-#[cfg(not(feature="midi_hack_transmission"))]
+#[cfg(not(feature = "midi_hack_transmission"))]
 impl Drop for ArpegiatorPlugin {
     fn drop(&mut self) {
         let event_id = Uuid::new_v4();

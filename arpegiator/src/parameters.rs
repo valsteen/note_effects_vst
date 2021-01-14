@@ -1,27 +1,27 @@
 #[allow(unused_imports)]
 use {
+    async_channel::Sender,
     log::{error, info},
-    util::parameter_value_conversion::{f32_to_byte, f32_to_bool},
     std::sync::Mutex,
-    async_channel::Sender
+    util::parameter_value_conversion::{f32_to_bool, f32_to_byte},
 };
 
 use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
-use util::parameters::ParameterConversion;
-#[cfg(not(feature="midi_hack_transmission"))] use crate::workers::main_worker::WorkerCommand;
+#[cfg(not(feature = "midi_hack_transmission"))]
+use crate::workers::main_worker::WorkerCommand;
 use util::duration_display;
+use util::parameters::ParameterConversion;
 use util::system::Uuid;
 
-
-#[cfg(not(feature="midi_hack_transmission"))]
+#[cfg(not(feature = "midi_hack_transmission"))]
 pub const PARAMETER_COUNT: usize = 4;
 
-#[cfg(feature="midi_hack_transmission")]
+#[cfg(feature = "midi_hack_transmission")]
 pub const PARAMETER_COUNT: usize = 3;
 
-#[cfg(not(feature="midi_hack_transmission"))]
+#[cfg(not(feature = "midi_hack_transmission"))]
 const BASE_PORT: u16 = 6000;
 
 // 1 = Immediate - TODO : must be default
@@ -48,41 +48,49 @@ think about those cases:
 // ideally while a note eposes its pitch and a pitchbend value, a method should directly tell the pitch in
 // millisemitones relative to 0 ( C-2 )
 pub(crate) enum PitchBendValues {
-    Off,  // no pitchbend, means same pitch until pattern ends
+    Off, // no pitchbend, means same pitch until pattern ends
     DurationToReachTarget(f32),
-    Immediate
+    Immediate,
 }
 
 pub(crate) struct ArpegiatorParameters {
     pub transfer: ParameterTransfer,
-    #[cfg(not(feature="midi_hack_transmission"))] pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>,
+    #[cfg(not(feature = "midi_hack_transmission"))]
+    pub worker_commands: Mutex<Option<Sender<WorkerCommand>>>,
 }
 
 impl ArpegiatorParameters {
-    #[cfg(not(feature="midi_hack_transmission"))]
+    #[cfg(not(feature = "midi_hack_transmission"))]
     pub fn get_port(&self) -> u16 {
         BASE_PORT + self.get_byte_parameter(Parameter::PortIndex) as u16
     }
 
-    #[cfg(not(feature="midi_hack_transmission"))]
+    #[cfg(not(feature = "midi_hack_transmission"))]
     pub fn update_port(&self, event_id: Uuid) {
         let port = self.get_byte_parameter(Parameter::PortIndex) as u16 + BASE_PORT;
         info!("Applying parameter change: port={}", port);
-        if let Err(error) = self.worker_commands.lock().unwrap().as_ref().unwrap().try_send(
-            WorkerCommand::SetPort(port, event_id)
-        ) {
-            info!("[{}] main worker is shutdown - ignoring port change ({})", event_id, error);
+        if let Err(error) = self
+            .worker_commands
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .try_send(WorkerCommand::SetPort(port, event_id))
+        {
+            info!(
+                "[{}] main worker is shutdown - ignoring port change ({})",
+                event_id, error
+            );
         }
     }
 }
 
-
 #[repr(i32)]
 pub enum Parameter {
-    HoldNotes = 0,  // a started pattern will find a note to play, even if no note is playing for that index
-    PatternLegato,  // pattern is not restarted if start/end match, and note is thus held
+    HoldNotes = 0, // a started pattern will find a note to play, even if no note is playing for that index
+    PatternLegato, // pattern is not restarted if start/end match, and note is thus held
     Pitchbend,
-    #[cfg(not(feature="midi_hack_transmission"))]
+    #[cfg(not(feature = "midi_hack_transmission"))]
     PortIndex,
 }
 
@@ -92,13 +100,12 @@ impl From<i32> for Parameter {
             0 => Parameter::HoldNotes,
             1 => Parameter::PatternLegato,
             2 => Parameter::Pitchbend,
-            #[cfg(not(feature="midi_hack_transmission"))]
+            #[cfg(not(feature = "midi_hack_transmission"))]
             3 => Parameter::PortIndex,
             _ => panic!("no such parameter {}", i),
         }
     }
 }
-
 
 impl Into<i32> for Parameter {
     fn into(self) -> i32 {
@@ -116,12 +123,11 @@ impl ParameterConversion<Parameter> for ArpegiatorParameters {
     }
 }
 
-
 impl ArpegiatorParameters {
     pub fn new() -> Self {
         let parameters = ArpegiatorParameters {
             transfer: ParameterTransfer::new(PARAMETER_COUNT),
-            #[cfg(not(feature="midi_hack_transmission"))]
+            #[cfg(not(feature = "midi_hack_transmission"))]
             worker_commands: Mutex::new(None),
         };
         parameters.set_parameter(Parameter::PatternLegato.into(), 1.);
@@ -140,39 +146,34 @@ impl ArpegiatorParameters {
     }
 }
 
-
 impl PluginParameters for ArpegiatorParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         let parameter = index.into();
         match parameter {
-            #[cfg(not(feature="midi_hack_transmission"))]
-            Parameter::PortIndex => {
-                self.get_port().to_string()
+            #[cfg(not(feature = "midi_hack_transmission"))]
+            Parameter::PortIndex => self.get_port().to_string(),
+            Parameter::HoldNotes | Parameter::PatternLegato => match self.get_bool_parameter(parameter) {
+                true => "On",
+                false => "Off",
             }
-            Parameter::HoldNotes | Parameter::PatternLegato => {
-                match self.get_bool_parameter(parameter) {
-                    true => "On",
-                    false => "Off"
-                }.to_string()
-            }
-            Parameter::Pitchbend => {
-                match self.get_pitchbend() {
-                    PitchBendValues::Off => "Off".into(),
-                    PitchBendValues::DurationToReachTarget(value) => duration_display(value),
-                    PitchBendValues::Immediate => "Immediate".into()
-                }
-            }
+            .to_string(),
+            Parameter::Pitchbend => match self.get_pitchbend() {
+                PitchBendValues::Off => "Off".into(),
+                PitchBendValues::DurationToReachTarget(value) => duration_display(value),
+                PitchBendValues::Immediate => "Immediate".into(),
+            },
         }
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
         match index.into() {
-            #[cfg(not(feature="midi_hack_transmission"))]
+            #[cfg(not(feature = "midi_hack_transmission"))]
             Parameter::PortIndex => "Port",
             Parameter::HoldNotes => "Hold notes",
             Parameter::PatternLegato => "Pattern Legato",
-            Parameter::Pitchbend => "Use pitchbend"
-        }.to_string()
+            Parameter::Pitchbend => "Use pitchbend",
+        }
+        .to_string()
     }
 
     fn get_parameter(&self, index: i32) -> f32 {
@@ -182,7 +183,7 @@ impl PluginParameters for ArpegiatorParameters {
     fn set_parameter(&self, index: i32, value: f32) {
         let parameter = index.into();
         match parameter {
-            #[cfg(not(feature="midi_hack_transmission"))]
+            #[cfg(not(feature = "midi_hack_transmission"))]
             Parameter::PortIndex => {
                 let new_value = f32_to_byte(value);
                 let old_value = self.get_byte_parameter(Parameter::PortIndex);
@@ -200,7 +201,7 @@ impl PluginParameters for ArpegiatorParameters {
                     self.transfer.set_parameter(index as usize, value);
                 }
             }
-            Parameter::Pitchbend => self.transfer.set_parameter(index as usize, value)
+            Parameter::Pitchbend => self.transfer.set_parameter(index as usize, value),
         }
     }
 
@@ -216,7 +217,7 @@ impl PluginParameters for ArpegiatorParameters {
         let event_id = Uuid::new_v4();
         info!("[{}] Load present data", event_id);
         self.deserialize_state(data);
-        #[cfg(not(feature="midi_hack_transmission"))]
+        #[cfg(not(feature = "midi_hack_transmission"))]
         {
             self.update_port(event_id)
         }
@@ -226,7 +227,7 @@ impl PluginParameters for ArpegiatorParameters {
         let event_id = Uuid::new_v4();
         info!("[{}] Load bank data", event_id);
         self.deserialize_state(data);
-        #[cfg(not(feature="midi_hack_transmission"))]
+        #[cfg(not(feature = "midi_hack_transmission"))]
         {
             self.update_port(event_id)
         }

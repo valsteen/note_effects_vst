@@ -25,7 +25,7 @@ impl DebugSocket {
 
     pub fn send(debug_str: &str) {
         if debug_str.is_empty() {
-            return
+            return;
         }
         let debug_string = debug_str.to_owned() + "\n";
         unsafe {

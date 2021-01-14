@@ -69,14 +69,7 @@ impl NoteGeneratorPlugin {
         let pitchbend_value = self.parameters.get_u14_parameter(Parameter::PitchBend);
         let msb = pitchbend_value >> 7;
         let lsb = pitchbend_value & 0x7F;
-        make_midi_message(
-            [
-                channel + PITCHBEND,
-                lsb as u8,
-                msb as u8,
-            ],
-            delta,
-        )
+        make_midi_message([channel + PITCHBEND, lsb as u8, msb as u8], delta)
     }
 
     fn get_current_pressure(&self, delta: i32) -> MidiEvent {
@@ -134,8 +127,7 @@ impl NoteGeneratorPlugin {
         }
 
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
-            self.send_buffer
-                .send_events(&self.events, &mut host_callback_lock.host);
+            self.send_buffer.send_events(&self.events, &mut host_callback_lock.host);
         }
         self.events.clear();
     }

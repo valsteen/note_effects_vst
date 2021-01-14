@@ -1,12 +1,12 @@
 use std::sync::Mutex;
 
-use vst::plugin::HostCallback ;
+use vst::plugin::HostCallback;
 use vst::util::ParameterTransfer;
 
 use util::debug::DebugSocket;
-use util::parameter_value_conversion::{f32_to_byte, f32_to_bool};
-use util::{HostCallbackLock, duration_display};
+use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::parameters::ParameterConversion;
+use util::{duration_display, HostCallbackLock};
 
 const PARAMETER_COUNT: usize = 3;
 
@@ -19,7 +19,7 @@ pub struct NoteOffDelayPluginParameters {
 pub enum Parameter {
     Delay = 0,
     MaxNotes,
-    MaxNotesAppliesToDelayedNotesOnly
+    MaxNotesAppliesToDelayedNotesOnly,
 }
 
 impl From<i32> for Parameter {
@@ -33,13 +33,11 @@ impl From<i32> for Parameter {
     }
 }
 
-
 impl Into<i32> for Parameter {
     fn into(self) -> i32 {
         self as i32
     }
 }
-
 
 impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
     fn get_parameter_transfer(&self) -> &ParameterTransfer {
@@ -50,7 +48,6 @@ impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
         PARAMETER_COUNT
     }
 }
-
 
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
@@ -69,7 +66,6 @@ impl NoteOffDelayPluginParameters {
     }
 }
 
-
 impl Default for NoteOffDelayPluginParameters {
     fn default() -> Self {
         NoteOffDelayPluginParameters {
@@ -78,7 +74,6 @@ impl Default for NoteOffDelayPluginParameters {
         }
     }
 }
-
 
 impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
@@ -105,7 +100,8 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                     "On"
                 } else {
                     "Off"
-                }.to_string()
+                }
+                .to_string()
             }
         }
     }
@@ -140,8 +136,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                 }
             }
             Parameter::MaxNotesAppliesToDelayedNotesOnly => {
-                self.set_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly,
-                                        f32_to_bool(value))
+                self.set_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly, f32_to_bool(value))
             }
         }
     }

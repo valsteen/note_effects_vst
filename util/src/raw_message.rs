@@ -1,13 +1,12 @@
+use super::messages::ChannelMessage;
+use crate::constants::PRESSURE;
 use core::clone::Clone;
 use core::convert::{From, Into};
 use core::ops::Index;
-use serde::{Serialize, Deserialize};
-use super::messages::ChannelMessage;
-use crate::constants::PRESSURE;
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Debug, Serialize, Deserialize)]
 pub struct RawMessage([u8; 3]);
-
 
 impl RawMessage {
     pub fn get_bytes(&self) -> &[u8] {
@@ -17,7 +16,6 @@ impl RawMessage {
         } else {
             &self.0
         }
-
     }
 }
 
@@ -33,18 +31,17 @@ impl Clone for RawMessage {
     }
 }
 
-impl From<[u8;3]> for RawMessage {
+impl From<[u8; 3]> for RawMessage {
     fn from(e: [u8; 3]) -> Self {
         RawMessage(e)
     }
 }
 
-impl Into<[u8;3]> for RawMessage {
+impl Into<[u8; 3]> for RawMessage {
     fn into(self) -> [u8; 3] {
         self.0
     }
 }
-
 
 impl Index<usize> for RawMessage {
     type Output = u8;

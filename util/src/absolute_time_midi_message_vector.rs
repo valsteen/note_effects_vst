@@ -30,7 +30,6 @@ impl DerefMut for AbsoluteTimeMidiMessageVector {
     }
 }
 
-
 // plot twist: this vector is for all events, not just note on/note off.
 // would still be OK to add that metadata to any event after all ? no
 // as a weak reference should be ok
@@ -42,15 +41,11 @@ impl AbsoluteTimeMidiMessageVector {
     pub fn insert_message(&mut self, data: [u8; 3], play_time_in_samples: usize, reason: MessageReason) {
         // we generate unique identifier per event. this is in order to match note on/note off pairs
         let channel_pitch_lookup = match MidiMessageType::from(RawMessage::from(data)) {
-            MidiMessageType::NoteOffMessage(midi_message) => {
-                Some((midi_message.channel, midi_message.pitch))
-            }
-            _ => {
-                None
-            }
+            MidiMessageType::NoteOffMessage(midi_message) => Some((midi_message.channel, midi_message.pitch)),
+            _ => None,
         };
 
-        let mut last_note_on_match = None ;
+        let mut last_note_on_match = None;
 
         let insert_point = self.iter().position(|message_at_position| {
             if let Some((channel, pitch)) = channel_pitch_lookup {
@@ -77,7 +72,7 @@ impl AbsoluteTimeMidiMessageVector {
             data: data.into(),
             id,
             play_time_in_samples,
-            reason
+            reason,
         };
 
         DebugSocket::send(&*format!("Inserting {}", message));
@@ -89,17 +84,13 @@ impl AbsoluteTimeMidiMessageVector {
     }
 
     pub fn ordered_insert(&mut self, message: AbsoluteTimeMidiMessage) {
-        let position = self.iter().position(|message_at_position| {
-            message.play_time_in_samples < message_at_position.play_time_in_samples
-        });
+        let position = self
+            .iter()
+            .position(|message_at_position| message.play_time_in_samples < message_at_position.play_time_in_samples);
 
         match position {
-            Some(position) => {
-                self.insert(position, message)
-            }
-            None => {
-                self.push(message)
-            }
+            Some(position) => self.insert(position, message),
+            None => self.push(message),
         }
     }
 }

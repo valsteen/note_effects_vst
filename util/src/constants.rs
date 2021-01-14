@@ -8,6 +8,4 @@ pub const PRESSURE: u8 = 0xD0;
 pub const PITCHBEND: u8 = 0xE0;
 pub const C0: i8 = 0x18;
 
-pub static NOTE_NAMES: &[&str; 12] = &[
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-];
+pub static NOTE_NAMES: &[&str; 12] = &["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

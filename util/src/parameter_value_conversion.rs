@@ -33,7 +33,6 @@ pub fn f32_to_u14(value: f32) -> u16 {
     (value * (0x3FFF_usize) as f32) as u16
 }
 
-
 // TODO better try to find a type that fits in 32 bits and store it as binary into the f32,
 // disregarding what f32 is suppose to contain
 

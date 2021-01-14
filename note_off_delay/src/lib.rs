@@ -6,10 +6,10 @@ extern crate vst;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
-use vst::event::Event;
 use vst::api::Events;
+use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::event::Event;
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
 
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
@@ -37,7 +37,7 @@ impl Default for NoteOffDelayPlugin {
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            message_queue: Default::default()
+            message_queue: Default::default(),
         }
     }
 }
@@ -50,12 +50,15 @@ impl NoteOffDelayPlugin {
                 self.current_time_in_samples,
                 &self.message_queue,
                 self.parameters.get_max_notes(),
-                self.parameters.get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
-                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0
+                self.parameters
+                    .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
+                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0,
             );
 
             self.message_queue = next_message_queue;
-            self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
+            self.send_buffer
+                .borrow_mut()
+                .send_events(events, &mut host_callback_lock.host);
         }
     }
 
@@ -70,10 +73,7 @@ impl NoteOffDelayPlugin {
 
     fn debug_events_in(&mut self, events: &Events) {
         for e in events.events() {
-            DebugSocket::send(
-                &*(format_event(&e)
-                    + &*format!(" current time={}", self.current_time_in_samples)),
-            );
+            DebugSocket::send(&*(format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
         }
     }
 
@@ -161,14 +161,17 @@ impl Plugin for NoteOffDelayPlugin {
     fn process_events(&mut self, events: &Events) {
         self.debug_events_in(events);
 
-        let note_off_delay = self.seconds_to_samples(self.parameters
-            .get_exponential_scale_parameter(Parameter::Delay, 10., 20.));
+        let note_off_delay = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
+            Parameter::Delay,
+            10.,
+            20.,
+        ));
 
         for event in events.events() {
             let midi_event = if let Event::Midi(midi_event) = event {
                 midi_event
             } else {
-                continue
+                continue;
             };
 
             // TODO: minimum time, maximum time ( with delay )
@@ -177,7 +180,8 @@ impl Plugin for NoteOffDelayPlugin {
                 MidiMessageType::NoteOffMessage(_) => {
                     self.message_queue.insert_message(
                         midi_event.data,
-                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
+                        midi_event.delta_frames as usize + self.current_time_in_samples,
+                        MessageReason::Live,
                     );
 
                     if note_off_delay > 0 {
@@ -188,7 +192,6 @@ impl Plugin for NoteOffDelayPlugin {
                             MessageReason::Delayed,
                         );
                     }
-
                 }
                 MidiMessageType::Unsupported => {
                     continue;
@@ -196,7 +199,8 @@ impl Plugin for NoteOffDelayPlugin {
                 _ => {
                     self.message_queue.insert_message(
                         midi_event.data,
-                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
+                        midi_event.delta_frames as usize + self.current_time_in_samples,
+                        MessageReason::Live,
                     );
                 }
             };

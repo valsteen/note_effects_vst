@@ -1,9 +1,8 @@
-use core::convert::From;
-use super::raw_message::RawMessage;
 use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
-use super::messages::{NoteOn, NoteOff, CC, Pressure, PitchBend, GenericChannelMessage};
+use super::messages::{GenericChannelMessage, NoteOff, NoteOn, PitchBend, Pressure, CC};
+use super::raw_message::RawMessage;
 use crate::messages::AfterTouch;
-
+use core::convert::From;
 
 pub enum MidiMessageType {
     NoteOnMessage(NoteOn),
@@ -13,7 +12,7 @@ pub enum MidiMessageType {
     PitchBendMessage(PitchBend),
     AfterTouchMessage(AfterTouch),
     UnsupportedChannelMessage(GenericChannelMessage),
-    Unsupported
+    Unsupported,
 }
 
 impl MidiMessageType {
@@ -21,19 +20,18 @@ impl MidiMessageType {
         let (channel, pitch) = match self {
             MidiMessageType::NoteOnMessage(m) => (m.channel, m.pitch),
             MidiMessageType::NoteOffMessage(m) => (m.channel, m.pitch),
-            _ => return false
+            _ => return false,
         };
 
         let (channel2, pitch2) = match other {
             MidiMessageType::NoteOnMessage(m) => (m.channel, m.pitch),
             MidiMessageType::NoteOffMessage(m) => (m.channel, m.pitch),
-            _ => return false
+            _ => return false,
         };
 
         channel == channel2 && pitch == pitch2
     }
 }
-
 
 impl From<RawMessage> for MidiMessageType {
     fn from(data: RawMessage) -> Self {
@@ -44,11 +42,10 @@ impl From<RawMessage> for MidiMessageType {
             0xD0 => MidiMessageType::PressureMessage(Pressure::from(data)),
             0xE0 => MidiMessageType::PitchBendMessage(PitchBend::from(data)),
             0xA0 | 0xC0 | 0xF0 => MidiMessageType::UnsupportedChannelMessage(GenericChannelMessage::from(data)),
-            _ => MidiMessageType::Unsupported
+            _ => MidiMessageType::Unsupported,
         }
     }
 }
-
 
 impl From<&[u8; 3]> for MidiMessageType {
     fn from(data: &[u8; 3]) -> Self {

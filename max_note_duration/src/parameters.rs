@@ -1,10 +1,10 @@
 use std::sync::Mutex;
 
-use vst::plugin::HostCallback ;
+use vst::plugin::HostCallback;
 use vst::util::ParameterTransfer;
 
-use util::{HostCallbackLock, duration_display};
 use util::parameters::ParameterConversion;
+use util::{duration_display, HostCallbackLock};
 
 const PARAMETER_COUNT: usize = 1;
 
@@ -27,13 +27,11 @@ impl From<i32> for Parameter {
     }
 }
 
-
 impl Into<i32> for Parameter {
     fn into(self) -> i32 {
         self as i32
     }
 }
-
 
 impl ParameterConversion<Parameter> for MaxNoteDurationPluginParameters {
     fn get_parameter_transfer(&self) -> &ParameterTransfer {
@@ -45,7 +43,6 @@ impl ParameterConversion<Parameter> for MaxNoteDurationPluginParameters {
     }
 }
 
-
 impl MaxNoteDurationPluginParameters {
     pub fn new(host: HostCallback) -> Self {
         MaxNoteDurationPluginParameters {
@@ -55,7 +52,6 @@ impl MaxNoteDurationPluginParameters {
     }
 }
 
-
 impl Default for MaxNoteDurationPluginParameters {
     fn default() -> Self {
         MaxNoteDurationPluginParameters {
@@ -64,7 +60,6 @@ impl Default for MaxNoteDurationPluginParameters {
         }
     }
 }
-
 
 impl vst::plugin::PluginParameters for MaxNoteDurationPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {

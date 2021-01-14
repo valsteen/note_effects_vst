@@ -7,10 +7,9 @@ use util::messages::CC;
 use util::midi_message_type::MidiMessageType;
 use util::midi_message_with_delta::MidiMessageWithDelta;
 
-use crate::midi_messages::note::{NoteIndex, Note, CCIndex};
+use crate::midi_messages::note::{CCIndex, Note, NoteIndex};
 use crate::midi_messages::timed_event::TimedEvent;
 use itertools::Itertools;
-
 
 pub struct Device {
     pub _name: String,
@@ -20,9 +19,8 @@ pub struct Device {
     pub note_index: usize,
 }
 
-
 impl Device {
-    pub fn new (name: String) -> Self {
+    pub fn new(name: String) -> Self {
         Device {
             _name: name,
             notes: Default::default(),
@@ -42,7 +40,6 @@ impl Device {
     }
 }
 
-
 #[derive(Copy, Clone, Debug)]
 pub struct Channel {
     pub pressure: u8,
@@ -55,19 +52,37 @@ pub enum Expression {
     Timbre,
     Pressure,
     PitchBend,
-    AfterTouch
+    AfterTouch,
 }
 
 pub enum DeviceChange {
-    AddNote { time: usize, note: Note },
-    RemoveNote { time: usize, note: Note },
-    NoteExpressionChange { time: usize, expression: Expression, note: Note },
+    AddNote {
+        time: usize,
+        note: Note,
+    },
+    RemoveNote {
+        time: usize,
+        note: Note,
+    },
+    NoteExpressionChange {
+        time: usize,
+        expression: Expression,
+        note: Note,
+    },
     // replacing happens when a note on is triggered for a note and channel that is already on
-    ReplaceNote { time: usize, old_note: Note, new_note: Note },
-    CCChange { time: usize, cc: CC },
-    Ignored { time: usize },
+    ReplaceNote {
+        time: usize,
+        old_note: Note,
+        new_note: Note,
+    },
+    CCChange {
+        time: usize,
+        cc: CC,
+    },
+    Ignored {
+        time: usize,
+    },
 }
-
 
 impl TimedEvent for DeviceChange {
     fn timestamp(&self) -> usize {
@@ -77,7 +92,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::NoteExpressionChange { time, .. } => *time,
             DeviceChange::ReplaceNote { time, .. } => *time,
             DeviceChange::CCChange { time, .. } => *time,
-            DeviceChange::Ignored { time, .. } => *time
+            DeviceChange::Ignored { time, .. } => *time,
         }
     }
 
@@ -90,7 +105,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::NoteExpressionChange { note, .. } => note.id,
             DeviceChange::ReplaceNote { new_note: note, .. } => note.id,
             DeviceChange::CCChange { .. } => 0,
-            DeviceChange::Ignored { .. } => 0
+            DeviceChange::Ignored { .. } => 0,
         }
     }
 }
@@ -112,12 +127,18 @@ impl PartialEq for DeviceChange {
     }
 }
 
-
 impl Device {
-    pub fn update(&mut self,
-                  midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) -> DeviceChange {
-        #[cfg(feature="device_debug")]
-        info!("[{}] Got event: {:?} {:?} {:02X?}", self._name, id, current_time, midi_message);
+    pub fn update(
+        &mut self,
+        midi_message: MidiMessageWithDelta,
+        current_time: usize,
+        id: Option<usize>,
+    ) -> DeviceChange {
+        #[cfg(feature = "device_debug")]
+        info!(
+            "[{}] Got event: {:?} {:?} {:02X?}",
+            self._name, id, current_time, midi_message
+        );
 
         let time = current_time + midi_message.delta_frames as usize;
 
@@ -129,9 +150,12 @@ impl Device {
                         self.note_index += 1;
                         note_id
                     }
-                    Some(id) => id
+                    Some(id) => id,
                 };
-                let index = NoteIndex { channel: note.channel, pitch: note.pitch };
+                let index = NoteIndex {
+                    channel: note.channel,
+                    pitch: note.pitch,
+                };
                 let new_note = Note {
                     id: note_id,
                     pressed_at: time,
@@ -146,16 +170,19 @@ impl Device {
                 };
 
                 match self.notes.insert(index, new_note) {
-                    None => {
-                        DeviceChange::AddNote { time, note: new_note }
-                    }
-                    Some(old_note) => {
-                        DeviceChange::ReplaceNote { time, old_note, new_note }
-                    }
+                    None => DeviceChange::AddNote { time, note: new_note },
+                    Some(old_note) => DeviceChange::ReplaceNote {
+                        time,
+                        old_note,
+                        new_note,
+                    },
                 }
             }
             MidiMessageType::NoteOffMessage(note) => {
-                let index = NoteIndex { channel: note.channel, pitch: note.pitch };
+                let index = NoteIndex {
+                    channel: note.channel,
+                    pitch: note.pitch,
+                };
 
                 match self.notes.remove(&index) {
                     None => {
@@ -171,7 +198,13 @@ impl Device {
                 }
             }
             MidiMessageType::CCMessage(cc) => {
-                self.cc.insert(CCIndex { channel: cc.channel, index: cc.cc }, cc.value);
+                self.cc.insert(
+                    CCIndex {
+                        channel: cc.channel,
+                        index: cc.cc,
+                    },
+                    cc.value,
+                );
                 if cc.cc == TIMBRECC {
                     self.channels[cc.channel as usize].timbre = cc.value;
                     for (_, note) in self.notes.iter_mut() {
@@ -204,7 +237,7 @@ impl Device {
                     }
                 }
                 DeviceChange::Ignored { time }
-            },
+            }
             MidiMessageType::AfterTouchMessage(message) => {
                 // redundant with pressure, but that's the message that bitwig will properly handle for by-note
                 // expressions
@@ -221,7 +254,7 @@ impl Device {
                     }
                 }
                 DeviceChange::Ignored { time }
-            },
+            }
             MidiMessageType::PitchBendMessage(message) => {
                 self.channels[message.channel as usize].pitchbend = message.millisemitones;
                 for (_, note) in self.notes.iter_mut() {
@@ -240,7 +273,6 @@ impl Device {
             }
             MidiMessageType::UnsupportedChannelMessage(_) => DeviceChange::Ignored { time },
             MidiMessageType::Unsupported => DeviceChange::Ignored { time },
-
         }
     }
 }

@@ -3,21 +3,21 @@ extern crate global_counter;
 use vst::event::MidiEvent;
 use vst::plugin::HostCallback;
 
+pub mod absolute_time_midi_message;
+pub mod absolute_time_midi_message_vector;
 pub mod constants;
 pub mod debug;
+pub mod delayed_message_consumer;
+pub mod ipc_payload;
+pub mod logging;
+pub mod messages;
+pub mod midi_message_type;
+pub mod midi_message_with_delta;
 pub mod parameter_value_conversion;
 pub mod parameters;
-pub mod messages;
-pub mod absolute_time_midi_message;
-pub mod midi_message_type;
 pub mod raw_message;
-pub mod absolute_time_midi_message_vector;
-pub mod delayed_message_consumer;
-pub mod transmute_buffer;
-pub mod logging;
-pub mod midi_message_with_delta;
-pub mod ipc_payload;
 pub mod system;
+pub mod transmute_buffer;
 
 #[derive(Default)]
 pub struct HostCallbackLock {

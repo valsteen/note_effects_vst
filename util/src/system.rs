@@ -1,6 +1,6 @@
-use std::fmt::{Debug, Display};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fmt::{Debug, Display};
 
 // generate unique IDs on top of Uuid, which does not implement Serialize/Deserialize
 
@@ -10,7 +10,7 @@ pub struct Uuid(u128);
 impl Default for Uuid {
     fn default() -> Self {
         Self {
-            0: uuid::Uuid::default().to_u128_le()
+            0: uuid::Uuid::default().to_u128_le(),
         }
     }
 }
@@ -18,7 +18,7 @@ impl Default for Uuid {
 impl Uuid {
     pub fn new_v4() -> Self {
         Self {
-            0: uuid::Uuid::new_v4().to_u128_le()
+            0: uuid::Uuid::new_v4().to_u128_le(),
         }
     }
 }

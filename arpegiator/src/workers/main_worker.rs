@@ -1,18 +1,17 @@
 use std::thread;
 use std::thread::JoinHandle;
 
-use async_channel::{Receiver, Sender, unbounded};
+use async_channel::{unbounded, Receiver, Sender};
 use async_std::task;
 use log::{error, info};
 
-use util::midi_message_with_delta::MidiMessageWithDelta;
 use util::ipc_payload::PatternPayload;
+use util::midi_message_with_delta::MidiMessageWithDelta;
 
 use crate::workers::ipc_worker::{spawn_ipc_worker, IPCWorkerCommand};
-use crate::workers::midi_output_worker::{MidiOutputWorkerCommand, spawn_midi_output_worker};
+use crate::workers::midi_output_worker::{spawn_midi_output_worker, MidiOutputWorkerCommand};
 use std::mem::take;
 use util::system::Uuid;
-
 
 #[derive(Debug)]
 pub(crate) enum WorkerCommand {
@@ -20,7 +19,10 @@ pub(crate) enum WorkerCommand {
     SetPort(u16, Uuid),
     SetSampleRate(f32),
     SetBlockSize(i64),
-    SendToMidiOutput { reception_time: u64, messages: Vec<MidiMessageWithDelta> },
+    SendToMidiOutput {
+        reception_time: u64,
+        messages: Vec<MidiMessageWithDelta>,
+    },
     IPCWorkerStopped(Uuid, u16),
 }
 
@@ -30,7 +32,6 @@ pub(crate) struct WorkerChannels {
     pub worker: JoinHandle<()>,
 }
 
-
 pub(crate) fn create_worker_thread() -> WorkerChannels {
     let (command_sender, command_receiver) = unbounded::<WorkerCommand>();
     let (pattern_sender, pattern_receiver) = unbounded::<PatternPayload>();
@@ -38,12 +39,13 @@ pub(crate) fn create_worker_thread() -> WorkerChannels {
     let returned_command_sender = command_sender.clone();
 
     let main = {
-        #[cfg(feature = "worker_debug")] info!("starting workers");
+        #[cfg(feature = "worker_debug")]
+        info!("starting workers");
 
         async move {
-            let mut current_port : Option<u16> = None;
-            let mut midi_out_worker_sender : Option<Sender<MidiOutputWorkerCommand>> = None;
-            let mut ipc_worker_sender : Option<Sender<IPCWorkerCommand>> = None;
+            let mut current_port: Option<u16> = None;
+            let mut midi_out_worker_sender: Option<Sender<MidiOutputWorkerCommand>> = None;
+            let mut ipc_worker_sender: Option<Sender<IPCWorkerCommand>> = None;
             let mut exit_event_id = Uuid::default();
             let mut exit_reason = "";
 
@@ -93,21 +95,34 @@ pub(crate) fn create_worker_thread() -> WorkerChannels {
                         }
                     }
 
-                    WorkerCommand::SendToMidiOutput { reception_time, messages } => {
+                    WorkerCommand::SendToMidiOutput {
+                        reception_time,
+                        messages,
+                    } => {
                         if let Some(midi_out_worker_sender) = midi_out_worker_sender.as_ref() {
-                            midi_out_worker_sender.send(
-                                MidiOutputWorkerCommand::SendToController { reception_time, messages }
-                            ).await.unwrap();
+                            midi_out_worker_sender
+                                .send(MidiOutputWorkerCommand::SendToController {
+                                    reception_time,
+                                    messages,
+                                })
+                                .await
+                                .unwrap();
                         }
                     }
                     WorkerCommand::SetSampleRate(rate) => {
                         if let Some(midi_out_worker_sender) = midi_out_worker_sender.as_ref() {
-                            midi_out_worker_sender.send(MidiOutputWorkerCommand::SetSampleRate(rate)).await.unwrap();
+                            midi_out_worker_sender
+                                .send(MidiOutputWorkerCommand::SetSampleRate(rate))
+                                .await
+                                .unwrap();
                         }
                     }
                     WorkerCommand::SetBlockSize(size) => {
                         if let Some(midi_out_worker_sender) = midi_out_worker_sender.as_ref() {
-                            midi_out_worker_sender.send(MidiOutputWorkerCommand::SetBlockSize(size)).await.unwrap();
+                            midi_out_worker_sender
+                                .send(MidiOutputWorkerCommand::SetBlockSize(size))
+                                .await
+                                .unwrap();
                         }
                     }
                     WorkerCommand::IPCWorkerStopped(event_id, ipc_worker_port) => {
@@ -138,34 +153,51 @@ pub(crate) fn create_worker_thread() -> WorkerChannels {
     WorkerChannels {
         command_sender: returned_command_sender,
         pattern_receiver,
-        worker
+        worker,
     }
 }
 
 async fn close_workers(
     midi_out_worker_sender: &mut Option<Sender<MidiOutputWorkerCommand>>,
     ipc_worker_sender: &mut Option<Sender<IPCWorkerCommand>>,
-    event_id: Uuid
+    event_id: Uuid,
 ) {
     if let Some(ipc_worker_sender) = take(ipc_worker_sender) {
         let (ack_sender, ack_receiver) = async_channel::bounded(1);
-        ipc_worker_sender.send(IPCWorkerCommand::Stop(ack_sender, event_id)).await.unwrap_or_else(|err| {
-            error!("[{}] Could not contact worker sender for shutdown : {}", event_id, err);
-        });
+        ipc_worker_sender
+            .send(IPCWorkerCommand::Stop(ack_sender, event_id))
+            .await
+            .unwrap_or_else(|err| {
+                error!("[{}] Could not contact worker sender for shutdown : {}", event_id, err);
+            });
         match ack_receiver.recv().await {
-            Ok(_) => { info!("[{}] ipc worker exit ack", event_id) }
-            Err(err) => { error!("[{}] ipc worker did not ack exit: {}", event_id, err) }
+            Ok(_) => {
+                info!("[{}] ipc worker exit ack", event_id)
+            }
+            Err(err) => {
+                error!("[{}] ipc worker did not ack exit: {}", event_id, err)
+            }
         }
     };
 
     if let Some(midi_out_worker_sender) = take(midi_out_worker_sender) {
         let (ack_sender, ack_receiver) = async_channel::bounded(1);
-        midi_out_worker_sender.send(MidiOutputWorkerCommand::Stop(ack_sender, event_id)).await.unwrap_or_else(|err| {
-            error!("[{}] Could not contact midi output worker for shutdown : {}", event_id, err);
-        });
+        midi_out_worker_sender
+            .send(MidiOutputWorkerCommand::Stop(ack_sender, event_id))
+            .await
+            .unwrap_or_else(|err| {
+                error!(
+                    "[{}] Could not contact midi output worker for shutdown : {}",
+                    event_id, err
+                );
+            });
         match ack_receiver.recv().await {
-            Ok(_) => { info!("[{}] midi out worker exit ack", event_id) }
-            Err(err) => { error!("[{}] midi out did not ack exit: {}", event_id, err) }
+            Ok(_) => {
+                info!("[{}] midi out worker exit ack", event_id)
+            }
+            Err(err) => {
+                error!("[{}] midi out did not ack exit: {}", event_id, err)
+            }
         }
     };
 }

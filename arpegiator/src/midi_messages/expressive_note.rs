@@ -1,16 +1,16 @@
 #[allow(unused_imports)]
 use log::info;
 
+use util::messages::{NoteOn, PitchBend, Timbre};
 use util::raw_message::RawMessage;
-use util::messages::{NoteOn, Timbre, PitchBend};
 
-#[cfg(feature= "pressure_as_channel_pressure")]
+#[cfg(feature = "pressure_as_channel_pressure")]
 use util::messages::Pressure;
 
-#[cfg(feature= "pressure_as_aftertouch")]
+#[cfg(feature = "pressure_as_aftertouch")]
 use util::messages::AfterTouch;
 
-#[cfg(feature= "pressure_as_cc7")]
+#[cfg(feature = "pressure_as_cc7")]
 use util::messages::CC;
 
 pub struct ExpressiveNote {
@@ -22,35 +22,37 @@ pub struct ExpressiveNote {
     pub pitchbend: i32,
 }
 
-
 impl ExpressiveNote {
-    #[cfg(feature= "pressure_as_aftertouch")]
+    #[cfg(feature = "pressure_as_aftertouch")]
     #[inline]
     fn get_pressure_note(&self) -> RawMessage {
         AfterTouch {
             channel: self.channel,
             pitch: self.pitch,
             value: self.pressure,
-        }.into()
+        }
+        .into()
     }
 
-    #[cfg(feature= "pressure_as_cc7")]
+    #[cfg(feature = "pressure_as_cc7")]
     #[inline]
     fn get_pressure_note(&self) -> RawMessage {
         CC {
             channel: self.channel,
             value: self.pressure,
-            cc: 7
-        }.into()
+            cc: 7,
+        }
+        .into()
     }
 
-    #[cfg(feature= "pressure_as_channel_pressure")]
+    #[cfg(feature = "pressure_as_channel_pressure")]
     #[inline]
     fn get_pressure_note(&self) -> RawMessage {
         Pressure {
             channel: self.channel,
             value: self.pressure,
-        }.into()
+        }
+        .into()
     }
 
     pub fn into_rawmessages(self) -> Vec<RawMessage> {
@@ -58,17 +60,20 @@ impl ExpressiveNote {
             PitchBend {
                 channel: self.channel,
                 millisemitones: self.pitchbend,
-            }.into(),
+            }
+            .into(),
             Timbre {
                 channel: self.channel,
                 value: self.timbre,
-            }.into(),
+            }
+            .into(),
             self.get_pressure_note(),
             NoteOn {
                 channel: self.channel,
                 pitch: self.pitch,
                 velocity: self.velocity, // todo mixing between pattern and note
-            }.into(),
+            }
+            .into(),
         ]
     }
 }

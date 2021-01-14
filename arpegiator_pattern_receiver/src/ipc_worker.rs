@@ -1,26 +1,28 @@
 use {
-    log::{error, info},
-    std::{thread, error},
-    async_channel::{Sender, Receiver},
+    async_channel::{Receiver, Sender},
     async_std::net::UdpSocket,
-    ipc_channel::ipc::IpcSender,
-    util::ipc_payload::{PatternPayload, IPCCommand, BootstrapPayload},
-    std::net::ToSocketAddrs,
     async_std::task,
-    std::time::Duration
+    ipc_channel::ipc::IpcSender,
+    log::{error, info},
+    std::net::ToSocketAddrs,
+    std::time::Duration,
+    std::{error, thread},
+    util::ipc_payload::{BootstrapPayload, IPCCommand, PatternPayload},
 };
 
 pub(crate) enum IPCWorkerCommand {
     Stop,
     SetPort(u16),
     Send(PatternPayload),
-    TryConnect
+    TryConnect,
 }
-
 
 async fn try_udp_send_receiver(port: u16) -> Result<IpcSender<IPCCommand>, Box<dyn error::Error + Send + Sync>> {
     let socket = UdpSocket::bind("127.0.0.1:0").await?;
-    let to = format!("127.0.0.1:{}", port).to_socket_addrs()?.next().ok_or("empty list")?;
+    let to = format!("127.0.0.1:{}", port)
+        .to_socket_addrs()?
+        .next()
+        .ok_or("empty list")?;
 
     let (one_shot, name) = ipc_channel::ipc::IpcOneShotServer::new()?;
     let serialized_name = bincode::serialize(&name)?;
@@ -41,18 +43,20 @@ async fn try_udp_send_receiver(port: u16) -> Result<IpcSender<IPCCommand>, Box<d
         }
     });
 
-    task::sleep(Duration::new(1,0 )).await;
+    task::sleep(Duration::new(1, 0)).await;
 
     let ipc_sender = bootstrap_result_receiver.try_recv().or_else(|e| {
-        IpcSender::<BootstrapPayload>::connect(name).or(Err("Cannot connect to signal timeout on ipc bootstrap"))?
-            .send(BootstrapPayload::Timeout).or(Err("Cannot send timeout to ipc bootstrapper"))?;
+        IpcSender::<BootstrapPayload>::connect(name)
+            .or(Err("Cannot connect to signal timeout on ipc bootstrap"))?
+            .send(BootstrapPayload::Timeout)
+            .or(Err("Cannot send timeout to ipc bootstrapper"))?;
         Err(format!("Connection timeout {}", e))
     })?;
 
     let (ping_sender, ping_receiver) = ipc_channel::ipc::channel::<()>()?;
     info!("sending ping");
     ipc_sender.send(IPCCommand::Ping(ping_sender))?;
-    task::sleep(Duration::new(1,0)).await;
+    task::sleep(Duration::new(1, 0)).await;
 
     ping_receiver.try_recv().or(Err("Pong not received"))?;
     info!("Ping received");
@@ -78,14 +82,18 @@ async fn ipc_worker(ipc_worker_sender: Sender<IPCWorkerCommand>, ipc_worker_rece
                 ipc_sender = match try_udp_send_receiver(port.unwrap()).await {
                     Ok(ipc_sender) => Some(ipc_sender),
                     Err(err) => {
-                        error!("Error while connecting to arpegiator on port {} : {}", port.unwrap(), err);
-                        task::sleep(Duration::new(1,0)).await;
+                        error!(
+                            "Error while connecting to arpegiator on port {} : {}",
+                            port.unwrap(),
+                            err
+                        );
+                        task::sleep(Duration::new(1, 0)).await;
                         retry_scheduled = true;
                         ipc_worker_sender.send(IPCWorkerCommand::TryConnect).await.unwrap();
                         None
                     }
                 };
-            },
+            }
             IPCWorkerCommand::SetPort(new_port) => {
                 ipc_sender = None;
                 port = Some(new_port);
@@ -93,7 +101,6 @@ async fn ipc_worker(ipc_worker_sender: Sender<IPCWorkerCommand>, ipc_worker_rece
                     ipc_worker_sender.send(IPCWorkerCommand::TryConnect).await.unwrap();
                     retry_scheduled = true
                 }
-
             }
             IPCWorkerCommand::Send(payload) => {
                 let ipc_sender_ref = match ipc_sender.as_ref() {
@@ -101,7 +108,7 @@ async fn ipc_worker(ipc_worker_sender: Sender<IPCWorkerCommand>, ipc_worker_rece
                         error!("IPC not ready, ignoring {:?}", payload);
                         continue;
                     }
-                    Some(ipc_sender) => ipc_sender
+                    Some(ipc_sender) => ipc_sender,
                 };
 
                 if let Err(err) = ipc_sender_ref.send(IPCCommand::PatternPayload(payload)) {
@@ -121,9 +128,7 @@ pub(crate) fn spawn_ipc_worker() -> Sender<IPCWorkerCommand> {
     let (worker_sender, worker_receiver) = async_channel::unbounded();
     {
         let worker_sender = worker_sender.clone();
-        thread::spawn(move || task::block_on(
-            ipc_worker(worker_sender, worker_receiver)
-        ))
+        thread::spawn(move || task::block_on(ipc_worker(worker_sender, worker_receiver)))
     };
     worker_sender
 }

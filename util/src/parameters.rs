@@ -1,12 +1,13 @@
 use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
-use super::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32, u14_to_f32, f32_to_u14};
+use super::parameter_value_conversion::{bool_to_f32, byte_to_f32, f32_to_bool, f32_to_byte, f32_to_u14, u14_to_f32};
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
 pub trait ParameterConversion<ParameterType>
-    where ParameterType: Into<i32> + From<i32>,
-          Self: PluginParameters
+where
+    ParameterType: Into<i32> + From<i32>,
+    Self: PluginParameters,
 {
     #[inline]
     fn get_byte_parameter(&self, index: ParameterType) -> u8 {
@@ -58,19 +59,22 @@ pub trait ParameterConversion<ParameterType>
     //     self.get_parameter_transfer().get_parameter(index as usize)
     // }
 
-    fn get_parameter_transfer(&self) -> &ParameterTransfer ;
+    fn get_parameter_transfer(&self) -> &ParameterTransfer;
 
-
-    fn get_parameter_count() -> usize ;
+    fn get_parameter_count() -> usize;
 
     fn serialize_state(&self) -> Vec<u8> {
         (0..Self::get_parameter_count())
-            .map(|i | self.get_byte_parameter((i as i32).into()))
+            .map(|i| self.get_byte_parameter((i as i32).into()))
             .collect()
     }
 
     fn deserialize_state(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate().take_while(|(i,_)| *i < Self::get_parameter_count()) {
+        for (i, item) in data
+            .iter()
+            .enumerate()
+            .take_while(|(i, _)| *i < Self::get_parameter_count())
+        {
             self.set_byte_parameter((i as i32).into(), *item);
         }
     }

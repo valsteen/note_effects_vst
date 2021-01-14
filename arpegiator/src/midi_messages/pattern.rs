@@ -1,7 +1,7 @@
 use crate::midi_messages::note::Note;
 use crate::midi_messages::timed_event::TimedEvent;
 
-pub const C3: u8 = 60 ;
+pub const C3: u8 = 60;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Pattern {
@@ -19,7 +19,7 @@ pub struct Pattern {
 
     pub pressure: u8,
     pub timbre: u8,
-    pub pitchbend: i32,  // in millisemitones
+    pub pitchbend: i32, // in millisemitones
 }
 
 impl Pattern {
@@ -34,7 +34,6 @@ impl Pattern {
     }
 }
 
-
 impl TimedEvent for Pattern {
     fn timestamp(&self) -> usize {
         if self.released_at > 0 {
@@ -48,7 +47,6 @@ impl TimedEvent for Pattern {
         self.id
     }
 }
-
 
 impl From<Note> for Pattern {
     fn from(note: Note) -> Self {
@@ -66,7 +64,7 @@ impl From<Note> for Pattern {
             pressed_at: note.pressed_at,
             released_at: 0,
             velocity: note.velocity,
-            pitchbend: 0
+            pitchbend: 0,
         }
     }
 }

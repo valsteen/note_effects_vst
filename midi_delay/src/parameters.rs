@@ -1,8 +1,8 @@
 use std::sync::Mutex;
-use util::{HostCallbackLock, duration_display};
+use util::parameters::ParameterConversion;
+use util::{duration_display, HostCallbackLock};
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
-use util::parameters::ParameterConversion;
 
 pub struct MidiDelayParameters {
     pub host: Mutex<HostCallbackLock>,
@@ -13,7 +13,6 @@ pub struct MidiDelayParameters {
 pub enum Parameter {
     Delay = 0,
 }
-
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
@@ -29,7 +28,6 @@ impl Into<i32> for Parameter {
         self as i32
     }
 }
-
 
 impl ParameterConversion<Parameter> for MidiDelayParameters {
     fn get_parameter_transfer(&self) -> &ParameterTransfer {
@@ -50,7 +48,6 @@ impl MidiDelayParameters {
     }
 }
 
-
 impl PluginParameters for MidiDelayParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         match index.into() {
@@ -67,8 +64,9 @@ impl PluginParameters for MidiDelayParameters {
 
     fn get_parameter_name(&self, index: i32) -> String {
         match Parameter::from(index as i32) {
-            Parameter::Delay => "Delay"
-        }.to_string()
+            Parameter::Delay => "Delay",
+        }
+        .to_string()
     }
 
     fn get_parameter(&self, index: i32) -> f32 {

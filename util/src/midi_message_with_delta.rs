@@ -1,15 +1,13 @@
-use serde::{Serialize, Deserialize};
-use vst::event::MidiEvent;
 use crate::raw_message::RawMessage;
+use serde::{Deserialize, Serialize};
 use vst::buffer::PlaceholderEvent;
-
+use vst::event::MidiEvent;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct MidiMessageWithDelta {
     pub delta_frames: u16,
     pub data: RawMessage,
 }
-
 
 impl vst::buffer::WriteIntoPlaceholder for MidiMessageWithDelta {
     fn write_into(&self, out: &mut PlaceholderEvent) {
@@ -20,8 +18,9 @@ impl vst::buffer::WriteIntoPlaceholder for MidiMessageWithDelta {
             note_length: None,
             note_offset: None,
             detune: 0,
-            note_off_velocity: 0
-        }.write_into(out)
+            note_off_velocity: 0,
+        }
+        .write_into(out)
     }
 }
 

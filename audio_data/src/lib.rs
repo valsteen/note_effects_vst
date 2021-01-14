@@ -3,15 +3,13 @@ extern crate vst;
 
 use log::info;
 
+use std::time::SystemTime;
+use util::logging::logging_setup;
+use util::transmute_buffer::{transmute_raw_buffer, transmute_raw_buffer_mut};
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-use std::time::SystemTime;
-use util::logging::logging_setup;
-use util::transmute_buffer::{transmute_raw_buffer, transmute_raw_buffer_mut};
-
-
 
 plugin_main!(AudioData);
 
@@ -20,7 +18,7 @@ pub struct AudioData {
     send_buffer: SendEventBuffer,
     host: HostCallback,
     last_was: u128,
-    last_now: u128
+    last_now: u128,
 }
 
 impl Default for AudioData {
@@ -30,7 +28,7 @@ impl Default for AudioData {
             send_buffer: Default::default(),
             host: Default::default(),
             last_was: 0,
-            last_now: 0
+            last_now: 0,
         }
     }
 }
@@ -41,7 +39,6 @@ impl AudioData {
         self.events.clear();
     }
 }
-
 
 impl Plugin for AudioData {
     fn get_info(&self) -> Info {
@@ -64,7 +61,6 @@ impl Plugin for AudioData {
         }
     }
 
-
     fn new(host: HostCallback) -> Self {
         logging_setup();
         AudioData {
@@ -72,7 +68,7 @@ impl Plugin for AudioData {
             send_buffer: Default::default(),
             host,
             last_was: 0,
-            last_now: 0
+            last_now: 0,
         }
     }
 
@@ -89,15 +85,23 @@ impl Plugin for AudioData {
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.send_midi();
         let (inputs, mut outputs) = buffer.split();
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_micros();
 
         let input_buffer = transmute_raw_buffer(inputs.get(0));
         let was = input_buffer[0];
 
         if self.last_was != was {
             self.last_was = was;
-            info!("difference = {} microseconds. Since last check: diff={} now={} was={}", now - was, now -
-                self.last_now, now, was);
+            info!(
+                "difference = {} microseconds. Since last check: diff={} now={} was={}",
+                now - was,
+                now - self.last_now,
+                now,
+                was
+            );
         }
 
         self.last_now = now;

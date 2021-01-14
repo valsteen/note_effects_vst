@@ -1,13 +1,13 @@
 use core::clone::Clone;
-use core::fmt::Display;
 use core::fmt;
+use core::fmt::Display;
 //use core::option::Option::{Some, None};
 //use vst::event::{Event, MidiEvent};
 
 use super::raw_message::RawMessage;
-use vst::event::MidiEvent;
-use std::cmp::max;
 use crate::delayed_message_consumer::MessageReason;
+use std::cmp::max;
+use vst::event::MidiEvent;
 
 #[derive(Copy)]
 pub struct AbsoluteTimeMidiMessage {
@@ -27,7 +27,7 @@ impl AbsoluteTimeMidiMessage {
             note_length: None,
             note_offset: None,
             detune: 0,
-            note_off_velocity: 0
+            note_off_velocity: 0,
         }
     }
 
@@ -42,14 +42,13 @@ impl AbsoluteTimeMidiMessage {
     }
 }
 
-
 impl Clone for AbsoluteTimeMidiMessage {
     fn clone(&self) -> Self {
         AbsoluteTimeMidiMessage {
             id: self.id,
             data: self.data,
             play_time_in_samples: self.play_time_in_samples,
-            reason: self.reason
+            reason: self.reason,
         }
     }
 
@@ -64,8 +63,8 @@ impl Clone for AbsoluteTimeMidiMessage {
 impl Display for AbsoluteTimeMidiMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(&*format!(
-            "{} {} [{:#04X} {:#04X} {:#04X}]", self.play_time_in_samples,
-            self.id, self.data[0], self.data[1], self.data[2]
+            "{} {} [{:#04X} {:#04X} {:#04X}]",
+            self.play_time_in_samples, self.id, self.data[0], self.data[1], self.data[2]
         ))
     }
 }
