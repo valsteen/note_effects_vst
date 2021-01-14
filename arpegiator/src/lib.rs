@@ -457,9 +457,6 @@ impl Plugin for ArpegiatorPlugin {
                                     .into(),
                                 ),
                                 Expression::PitchBend => {
-                                    // TODO should change the pitch as is, meaning it's the pitchbend is just added to
-                                    // the result, independently from the notes we're supposed to match
-                                    // the result should be: target note + pattern pitchbend
                                     Some(
                                         PitchBend {
                                             channel: pattern.channel,
