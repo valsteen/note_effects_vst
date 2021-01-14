@@ -139,7 +139,7 @@ impl ArpegiatorParameters {
             x if x <= 0. => PitchBendValues::Immediate,
             x if x >= 1. => PitchBendValues::Off,
             _ => {
-                let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 1., 80.);
+                let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 5., 80.);
                 PitchBendValues::DurationToReachTarget(value)
             }
         }

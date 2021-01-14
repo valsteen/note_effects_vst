@@ -4,6 +4,8 @@ use {
     std::mem::take,
 };
 
+use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
@@ -35,9 +37,9 @@ use mach::mach_time::mach_absolute_time;
 use crate::midi_messages::change::SourceChange;
 use crate::midi_messages::pattern_device::{PatternDevice, PatternDeviceChange};
 use crate::midi_messages::timed_event::TimedEvent;
-use crate::parameters::{ArpegiatorParameters, PitchBendValues, PARAMETER_COUNT};
-use std::cmp::Ordering;
+use crate::parameters::{ArpegiatorParameters, PitchBendValues, PARAMETER_COUNT, Parameter};
 use util::system::Uuid;
+use util::parameters::ParameterConversion;
 
 #[cfg(not(feature = "midi_hack_transmission"))]
 mod system;
@@ -337,7 +339,7 @@ impl Plugin for ArpegiatorPlugin {
         let notes_device_in = &mut self.notes_device_in;
 
         #[cfg(feature = "midi_hack_transmission")]
-        let (pattern_messages, notes): (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
+        let (mut pattern_messages, notes): (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
             let (mut patterns, mut notes): (Vec<MidiEvent>, Vec<MidiEvent>) =
                 self.events.drain(..).partition(|item| item.data[0] < 0x80);
             notes.sort_by_key(|x| x.delta_frames);
@@ -351,6 +353,37 @@ impl Plugin for ArpegiatorPlugin {
                 .collect_vec();
             (patterns, notes)
         };
+
+        if self.parameters.get_bool_parameter(Parameter::PatternLegato) {
+            let mut groups = vec![];
+            for (_, pattern_group) in &pattern_messages.iter().group_by(|x| x.delta_frames) {
+                let mut legato_patterns = HashSet::new();
+                let pattern_group = pattern_group.collect_vec();
+                let notes_off = pattern_group.iter().filter(
+                    |x| x.data.get_bytes()[0] & 0xF0 == 0x80
+                ).map(|x| [x.data.get_bytes()[0] & 0x0F, x.data.get_bytes()[1]]).collect_vec();
+
+                for pattern in pattern_group.iter().filter(|pattern| pattern.data.get_bytes()[0] & 0xF0 == 0x90) {
+                    let channel_pitch = [pattern.data.get_bytes()[0] & 0x0F, pattern.data.get_bytes()[1]];
+                    if notes_off.contains(&channel_pitch) {
+                        legato_patterns.insert(channel_pitch);
+                    }
+                }
+                let pattern_group = pattern_group.into_iter().filter(|pattern| {
+                    let status = pattern.data.get_bytes()[0] & 0xF0;
+                    if status == 0x80 || status == 0x90 {
+                        let channel = pattern.data.get_bytes()[0] & 0x0F ;
+                        let pitch = pattern.data.get_bytes()[1];
+                        !legato_patterns.contains(&[channel, pitch])
+                    } else {
+                        true
+                    }
+                }).collect_vec();
+                groups.push(pattern_group)
+            }
+
+            pattern_messages = groups.into_iter().flatten().copied().collect_vec();
+        }
 
         let pattern_changes = pattern_messages.into_iter().map(|message| {
             let change = pattern_device_in.update(message, current_time_in_samples, None);
@@ -379,7 +412,9 @@ impl Plugin for ArpegiatorPlugin {
                         DeviceChange::AddNote { .. } => {
                             match self.parameters.get_pitchbend() {
                                 PitchBendValues::Off => {}
-                                PitchBendValues::DurationToReachTarget(_) => {}
+                                PitchBendValues::DurationToReachTarget(_) => {
+                                    // sample & hold in bitwig probably does the job already
+                                }
                                 PitchBendValues::Immediate => {
                                     // incoming note can move before other notes, so we have to recalculate pitches of
                                     // all playing notes
