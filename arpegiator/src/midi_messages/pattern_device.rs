@@ -34,6 +34,11 @@ pub enum PatternDeviceChange {
         old_pattern: Pattern,
         new_pattern: Pattern,
     },
+    Legato {
+        time: usize,
+        old_pattern: Pattern,
+        new_pattern: Pattern,
+    },
     CC {
         cc: CC,
         time: usize,
@@ -69,6 +74,7 @@ impl TimedEvent for PatternDeviceChange {
             PatternDeviceChange::ReplacePattern { time, .. } => *time,
             PatternDeviceChange::None { time, .. } => *time,
             PatternDeviceChange::CC { time, .. } => *time,
+            PatternDeviceChange::Legato { time, .. } => *time
         }
     }
 
@@ -82,6 +88,7 @@ impl TimedEvent for PatternDeviceChange {
             } => pattern.id,
             PatternDeviceChange::CC { .. } => 0,
             PatternDeviceChange::None { .. } => 0,
+            PatternDeviceChange::Legato { new_pattern, .. } => new_pattern.id
         }
     }
 }
@@ -144,6 +151,20 @@ impl PatternDevice {
                     },
                 }
             }
+            DeviceChange::NoteLegato { time, old_note, new_note } => {
+                let new_pattern = Pattern::from(new_note);
+                match self.patterns.insert(new_pattern.id, new_pattern) {
+                    None => {
+                        error!("Expected to replace a pattern matching, found nothing {:?}", old_note);
+                        PatternDeviceChange::None { time }
+                    }
+                    Some(old_pattern) => PatternDeviceChange::Legato {
+                        time,
+                        old_pattern,
+                        new_pattern,
+                    },
+                }
+            },
             DeviceChange::CCChange { time, cc } => PatternDeviceChange::CC { cc, time },
             DeviceChange::Ignored { time } => PatternDeviceChange::None { time },
         }

@@ -15,6 +15,7 @@ use crate::midi_messages::note::Note;
 use crate::midi_messages::pattern::Pattern;
 #[cfg(not(feature = "midi_hack_transmission"))]
 use crate::workers::main_worker::WorkerCommand;
+use crate::parameters::VelocitySource;
 
 pub(crate) struct DeviceOut {
     device: Device,
@@ -22,6 +23,12 @@ pub(crate) struct DeviceOut {
 }
 
 impl DeviceOut {
+    pub(crate) fn legato(&mut self, old_id: usize, new_id: usize) {
+        if let Some(note) = self.device.notes.values_mut().find(|note| note.id == old_id) {
+            note.id = new_id;
+        }
+    }
+
     pub fn new(name: String) -> Self {
         Self {
             device: Device::new(name),
@@ -31,7 +38,7 @@ impl DeviceOut {
 
     pub fn update(&mut self, midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) {
         self.output_queue.push(midi_message);
-        self.device.update(midi_message, current_time, id);
+        self.device.push(midi_message, current_time, id);
         if !self.device.notes.is_empty() {
             #[cfg(feature = "device_debug")]
             info!("Device out state after update: {:2X?}", self.device.notes)
@@ -54,8 +61,12 @@ impl DeviceOut {
         }
     }
 
-    pub fn update_pitch(&mut self, note_id: usize, target_pitch: u8, delta_frames: u16, current_time: usize) {
-        match self.device.notes.values().find(|note| note.id == note_id) {
+    pub fn find_by_note_id(&self, note_id: usize) -> Option<&Note> {
+        self.device.notes.values().find(|note| note.id == note_id)
+    }
+
+    pub fn update_pitch(&mut self, note_id: usize, increment: i32, delta_frames: u16, current_time: usize) {
+        match self.find_by_note_id(note_id) {
             None => {
                 info!(
                     "Cannot find note to pitchbend. Required note_id: {}. Current notes: {:02X?}",
@@ -66,9 +77,9 @@ impl DeviceOut {
             Some(note) => {
                 let raw_message: RawMessage = PitchBend {
                     channel: note.channel,
-                    millisemitones: (target_pitch as i32 - note.pitch as i32) * 1000,
-                }
-                .into();
+                    millisemitones: increment
+                }.into();
+
                 self.update(
                     MidiMessageWithDelta {
                         delta_frames,
@@ -78,7 +89,7 @@ impl DeviceOut {
                     None,
                 );
             }
-        };
+        }
     }
 
     pub fn push_note_off(&mut self, note_id: usize, velocity_off: u8, delta_frames: u16, current_time: usize) {
@@ -108,7 +119,7 @@ impl DeviceOut {
         );
     }
 
-    pub fn push_note_on(&mut self, pattern: &Pattern, note: &Note, current_time: usize) {
+    pub fn push_note_on(&mut self, pattern: &Pattern, note: &Note, current_time: usize, velocity_source: VelocitySource) {
         let pitch = match pattern.transpose(note.pitch) {
             None => {
                 return;
@@ -116,16 +127,20 @@ impl DeviceOut {
             Some(pitch) => pitch,
         };
 
+        let velocity = match velocity_source {
+            VelocitySource::Pattern => pattern.velocity,
+            VelocitySource::Mixed(x) => (pattern.velocity as f32 * (1. - x) + note.velocity as f32 * x) as u8,
+            VelocitySource::Notes => note.velocity
+        };
+
         for raw_message in (ExpressiveNote {
             channel: pattern.channel,
             pitch,
-            velocity: pattern.velocity,
+            velocity,
             pressure: pattern.pressure,
             timbre: pattern.timbre,
             pitchbend: pattern.pitchbend,
-        })
-        .into_rawmessages()
-        {
+        }).into_rawmessages() {
             self.update(
                 MidiMessageWithDelta {
                     delta_frames: (pattern.pressed_at - current_time) as u16,

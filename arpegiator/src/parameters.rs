@@ -12,46 +12,78 @@ use vst::util::ParameterTransfer;
 #[cfg(not(feature = "midi_hack_transmission"))]
 use crate::workers::main_worker::WorkerCommand;
 use util::duration_display;
-use util::parameters::ParameterConversion;
+use util::parameters::{ParameterConversion, get_exponential_scale_value};
 use util::system::Uuid;
 
 #[cfg(not(feature = "midi_hack_transmission"))]
-pub const PARAMETER_COUNT: usize = 4;
+pub const PARAMETER_COUNT: usize = 5;
 
 #[cfg(feature = "midi_hack_transmission")]
-pub const PARAMETER_COUNT: usize = 3;
+pub const PARAMETER_COUNT: usize = 4;
 
 #[cfg(not(feature = "midi_hack_transmission"))]
 const BASE_PORT: u16 = 6000;
 
-// 1 = Immediate - TODO : must be default
-// 0 = Off
-// highest = faster
-// lowest = slower
-// choose or configurable:
-// fixed time between start/end pitch
-// fixed time per semitone
-/*
-think about those cases:
-    large difference / small interval
-    small difference / large interval => weirdest
-
-    thus fixed time sounds weird, but the player can keep changing the target note, thus has the possibility to
-    influence the speed.
-    but then we need to reset the time at each change
-
-    also : velocity would influence pressure
-
- */
-
-// note: if pitchbend is not off, it makes sense to consume note pitchbend as is
-// ideally while a note eposes its pitch and a pitchbend value, a method should directly tell the pitch in
-// millisemitones relative to 0 ( C-2 )
 pub(crate) enum PitchBendValues {
     Off, // no pitchbend, means same pitch until pattern ends
     DurationToReachTarget(f32),
     Immediate,
 }
+
+impl From<f32> for PitchBendValues {
+    fn from(x: f32) -> Self {
+        match x {
+            x if x <= 0. => PitchBendValues::Immediate,
+            x if x >= 1. => PitchBendValues::Off,
+            _ => {
+                let value = get_exponential_scale_value(x, 5., 80.);
+                PitchBendValues::DurationToReachTarget(value)
+            }
+        }
+    }
+}
+
+// TODO trait to string, change parameter to string in parameters trait
+
+impl ToString for PitchBendValues {
+    fn to_string(&self) -> String {
+        match self {
+            PitchBendValues::Off => "Off".to_string(),
+            PitchBendValues::DurationToReachTarget(x) => duration_display(*x),
+            PitchBendValues::Immediate => "Immediate".to_string()
+        }
+    }
+}
+
+pub(crate) enum VelocitySource {
+    Pattern,
+    Mixed(f32),
+    Notes
+}
+
+
+impl ToString for VelocitySource {
+    fn to_string(&self) -> String {
+        match self {
+            VelocitySource::Pattern => "Pattern".to_string(),
+            VelocitySource::Mixed(x) => format!("{}%", (x * 100.) as u8),
+            VelocitySource::Notes => "Notes".to_string()
+        }
+    }
+}
+
+impl From<f32> for VelocitySource {
+    fn from(x: f32) -> Self {
+        match x {
+            x if x <= 0. => VelocitySource::Pattern,
+            x if x >= 1. => VelocitySource::Notes,
+            x => {
+                VelocitySource::Mixed(x)
+            }
+        }
+    }
+}
+
 
 pub(crate) struct ArpegiatorParameters {
     pub transfer: ParameterTransfer,
@@ -90,6 +122,7 @@ pub enum Parameter {
     HoldNotes = 0, // a started pattern will find a note to play, even if no note is playing for that index
     PatternLegato, // pattern is not restarted if start/end match, and note is thus held
     Pitchbend,
+    VelocitySource,
     #[cfg(not(feature = "midi_hack_transmission"))]
     PortIndex,
 }
@@ -100,8 +133,9 @@ impl From<i32> for Parameter {
             0 => Parameter::HoldNotes,
             1 => Parameter::PatternLegato,
             2 => Parameter::Pitchbend,
+            3 => Parameter::VelocitySource,
             #[cfg(not(feature = "midi_hack_transmission"))]
-            3 => Parameter::PortIndex,
+            4 => Parameter::PortIndex,
             _ => panic!("no such parameter {}", i),
         }
     }
@@ -135,14 +169,11 @@ impl ArpegiatorParameters {
     }
 
     pub fn get_pitchbend(&self) -> PitchBendValues {
-        match self.get_parameter(Parameter::Pitchbend.into()) {
-            x if x <= 0. => PitchBendValues::Immediate,
-            x if x >= 1. => PitchBendValues::Off,
-            _ => {
-                let value = self.get_exponential_scale_parameter(Parameter::Pitchbend, 5., 80.);
-                PitchBendValues::DurationToReachTarget(value)
-            }
-        }
+        PitchBendValues::from(self.get_parameter(Parameter::Pitchbend.into()))
+    }
+
+    pub fn get_velocitysource(&self) -> VelocitySource {
+        VelocitySource::from(self.get_parameter(Parameter::VelocitySource.into()))
     }
 }
 
@@ -157,11 +188,8 @@ impl PluginParameters for ArpegiatorParameters {
                 false => "Off",
             }
             .to_string(),
-            Parameter::Pitchbend => match self.get_pitchbend() {
-                PitchBendValues::Off => "Off".into(),
-                PitchBendValues::DurationToReachTarget(value) => duration_display(value),
-                PitchBendValues::Immediate => "Immediate".into(),
-            },
+            Parameter::Pitchbend => self.get_pitchbend().to_string(),
+            Parameter::VelocitySource => self.get_velocitysource().to_string()
         }
     }
 
@@ -172,6 +200,7 @@ impl PluginParameters for ArpegiatorParameters {
             Parameter::HoldNotes => "Hold notes",
             Parameter::PatternLegato => "Pattern Legato",
             Parameter::Pitchbend => "Use pitchbend",
+            Parameter::VelocitySource => "Velocity",
         }
         .to_string()
     }
@@ -202,6 +231,7 @@ impl PluginParameters for ArpegiatorParameters {
                 }
             }
             Parameter::Pitchbend => self.transfer.set_parameter(index as usize, value),
+            Parameter::VelocitySource => self.transfer.set_parameter(index as usize, value),
         }
     }
 

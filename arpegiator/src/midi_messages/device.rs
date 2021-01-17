@@ -17,6 +17,7 @@ pub struct Device {
     pub cc: HashMap<CCIndex, u8>,
     pub channels: [Channel; 16],
     pub note_index: usize,
+    pub legato: bool,
 }
 
 impl Device {
@@ -31,6 +32,7 @@ impl Device {
                 timbre: 0,
             }; 16],
             note_index: 0,
+            legato: false,
         }
     }
 
@@ -79,6 +81,11 @@ pub enum DeviceChange {
         time: usize,
         cc: CC,
     },
+    NoteLegato {
+        time: usize,
+        old_note: Note,
+        new_note: Note
+    },
     Ignored {
         time: usize,
     },
@@ -93,6 +100,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::ReplaceNote { time, .. } => *time,
             DeviceChange::CCChange { time, .. } => *time,
             DeviceChange::Ignored { time, .. } => *time,
+            DeviceChange::NoteLegato { time, .. } => *time
         }
     }
 
@@ -104,6 +112,7 @@ impl TimedEvent for DeviceChange {
             DeviceChange::RemoveNote { note, .. } => note.id,
             DeviceChange::NoteExpressionChange { note, .. } => note.id,
             DeviceChange::ReplaceNote { new_note: note, .. } => note.id,
+            DeviceChange::NoteLegato { new_note: note, .. } => note.id,
             DeviceChange::CCChange { .. } => 0,
             DeviceChange::Ignored { .. } => 0,
         }
@@ -127,13 +136,9 @@ impl PartialEq for DeviceChange {
     }
 }
 
+
 impl Device {
-    pub fn update(
-        &mut self,
-        midi_message: MidiMessageWithDelta,
-        current_time: usize,
-        id: Option<usize>,
-    ) -> DeviceChange {
+    pub fn push(&mut self, midi_message: MidiMessageWithDelta, current_time: usize, id: Option<usize>) -> DeviceChange {
         #[cfg(feature = "device_debug")]
         info!(
             "[{}] Got event: {:?} {:?} {:02X?}",
@@ -273,6 +278,60 @@ impl Device {
             }
             MidiMessageType::UnsupportedChannelMessage(_) => DeviceChange::Ignored { time },
             MidiMessageType::Unsupported => DeviceChange::Ignored { time },
+        }
+    }
+
+    pub fn process_buffer(&mut self, messages: Vec<MidiMessageWithDelta>, current_time: usize) -> Vec<DeviceChange> {
+        let mut output = vec![];
+
+        for message in messages {
+            output.push(self.push(message, current_time, None))
+        }
+
+        if self.legato {
+            // TODO pressure modulation at velocity change is a possibility
+
+            let mut legato_output = vec![];
+            while !output.is_empty() {
+                let change_1 = output.remove(0);
+
+                // remove note is sorted as being before add note
+                if let DeviceChange::RemoveNote { time: time_1, note: note_1 } = change_1 {
+                    if let Some(position) = output.iter().position(|change| {
+                        matches!(change, DeviceChange::AddNote { time: time_2, note: note_2 } if time_1 == *time_2 && note_1.pitch == note_2.pitch && note_1.channel == note_2.channel)
+                    }) {
+                        let add_note = output.remove(position);
+
+                        if let Some(position) = output.iter().position(|change| {
+                            match change {
+                                DeviceChange::NoteExpressionChange { time: time_2, expression, note: note_2 }
+                                if time_1 == *time_2 && note_1.channel == note_2.channel => {
+                                    matches!(expression, Expression::PitchBend)
+                                }
+                                _ => false
+                            }
+                        }) {
+                            output.remove(position);
+                        }
+
+                        if let DeviceChange::AddNote { note: new_note, .. } = add_note {
+                            output.push(DeviceChange::NoteLegato { time: time_1, old_note: note_1, new_note });
+                        }
+
+                        continue;
+                    }
+                }
+
+                if let DeviceChange::ReplaceNote { .. } = change_1 {
+                    // ignore restarts in legato
+                    continue;
+                }
+
+                legato_output.push(change_1)
+            }
+            legato_output
+        } else {
+            output
         }
     }
 }

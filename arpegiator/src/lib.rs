@@ -5,7 +5,6 @@ use {
 };
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
@@ -40,7 +39,6 @@ use crate::midi_messages::timed_event::TimedEvent;
 use crate::parameters::{ArpegiatorParameters, PitchBendValues, PARAMETER_COUNT, Parameter};
 use util::system::Uuid;
 use util::parameters::ParameterConversion;
-use util::constants::PITCHBEND;
 
 #[cfg(not(feature = "midi_hack_transmission"))]
 mod system;
@@ -54,6 +52,14 @@ mod parameters;
 extern crate vst;
 
 plugin_main!(ArpegiatorPlugin);
+
+
+struct PitchbendInProgress {
+    channel: u8,
+    increment_per_block: i32,
+    target: i32
+}
+
 
 pub struct ArpegiatorPlugin {
     events: Vec<MidiEvent>,
@@ -71,6 +77,7 @@ pub struct ArpegiatorPlugin {
     #[cfg(not(feature = "midi_hack_transmission"))]
     worker_channels: Option<WorkerChannels>,
     resumed: bool,
+    pitchbend_in_progress: Vec<PitchbendInProgress>
 }
 
 impl ArpegiatorPlugin {
@@ -110,6 +117,7 @@ impl Default for ArpegiatorPlugin {
             #[cfg(not(feature = "midi_hack_transmission"))]
             worker_channels: None,
             resumed: false,
+            pitchbend_in_progress: vec![]
         }
     }
 }
@@ -172,6 +180,7 @@ impl Plugin for ArpegiatorPlugin {
             #[cfg(not(feature = "midi_hack_transmission"))]
             worker_channels: None,
             resumed: false,
+            pitchbend_in_progress: vec![]
         }
     }
 
@@ -340,11 +349,11 @@ impl Plugin for ArpegiatorPlugin {
         let notes_device_in = &mut self.notes_device_in;
 
         #[cfg(feature = "midi_hack_transmission")]
-        let (mut pattern_messages, notes): (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
+        let (pattern_messages, notes): (Vec<MidiMessageWithDelta>, Vec<MidiEvent>) = {
             let (mut patterns, mut notes): (Vec<MidiEvent>, Vec<MidiEvent>) =
                 self.events.drain(..).partition(|item| item.data[0] < 0x80);
-            notes.sort_by_key(|x| x.delta_frames);
-            patterns.sort_by_key(|x| x.delta_frames);
+            notes.sort_by_key(|x| [x.delta_frames, x.data[0] as i32, x.data[1] as i32]);
+            patterns.sort_by_key(|x| [x.delta_frames, x.data[0] as i32, x.data[1] as i32]);
             let patterns = patterns
                 .iter()
                 .map(|event| MidiMessageWithDelta {
@@ -355,53 +364,23 @@ impl Plugin for ArpegiatorPlugin {
             (patterns, notes)
         };
 
-        if self.parameters.get_bool_parameter(Parameter::PatternLegato) {
-            let mut groups = vec![];
-            for (_, pattern_group) in &pattern_messages.iter().group_by(|x| x.delta_frames) {
-                let mut legato_patterns = HashSet::new();
-                let pattern_group = pattern_group.collect_vec();
-                let notes_off = pattern_group.iter().filter(
-                    |x| x.data.get_bytes()[0] & 0xF0 == 0x80
-                ).map(|x| [x.data.get_bytes()[0] & 0x0F, x.data.get_bytes()[1]]).collect_vec();
+        pattern_device_in.legato = self.parameters.get_bool_parameter(Parameter::PatternLegato);
+        let pattern_changes = pattern_device_in.process_buffer(pattern_messages, current_time_in_samples);
 
-                for pattern in pattern_group.iter().filter(|pattern| pattern.data.get_bytes()[0] & 0xF0 == 0x90) {
-                    let channel_pitch = [pattern.data.get_bytes()[0] & 0x0F, pattern.data.get_bytes()[1]];
-                    if notes_off.contains(&channel_pitch) {
-                        legato_patterns.insert(channel_pitch);
-                    }
-                }
-                let pattern_group = pattern_group.into_iter().filter(|pattern| {
-                    let status = pattern.data.get_bytes()[0] & 0xF0;
-                    let channel = pattern.data.get_bytes()[0] & 0x0F ;
-
-                    if status == 0x80 || status == 0x90 {
-                        let pitch = pattern.data.get_bytes()[1];
-                        !legato_patterns.contains(&[channel, pitch])
-                    } else if status == PITCHBEND {
-                        legato_patterns.iter().find(|channel_pitch| channel_pitch[0] == channel).is_none()
-                    } else {
-                        true
-                    }
-                }).collect_vec();
-                groups.push(pattern_group)
-            }
-
-            pattern_messages = groups.into_iter().flatten().copied().collect_vec();
-        }
-
-        let pattern_changes = pattern_messages.into_iter().map(|message| {
-            let change = pattern_device_in.update(message, current_time_in_samples, None);
-            let change = pattern_device.update(change);
-            SourceChange::PatternChange(change)
+        let pattern_changes = pattern_changes.into_iter().map(|change| {
+            SourceChange::PatternChange(pattern_device.update(change))
         });
 
-        let note_changes = notes.iter().map(|event| {
-            let midi_message_with_delta = MidiMessageWithDelta {
+        let notes_in_as_messages = notes.iter().map(|event|
+            MidiMessageWithDelta {
                 delta_frames: event.delta_frames as u16,
                 data: event.data.into(),
-            };
+            }
+        ).collect_vec();
 
-            let change = notes_device_in.update(midi_message_with_delta, current_time_in_samples, None);
+        let note_changes = notes_device_in.process_buffer(notes_in_as_messages, current_time_in_samples);
+
+        let note_changes = note_changes.into_iter().map(|change| {
             SourceChange::NoteChange(change)
         });
 
@@ -414,12 +393,11 @@ impl Plugin for ArpegiatorPlugin {
                 SourceChange::NoteChange(change) => {
                     match change {
                         DeviceChange::AddNote { .. } => {
-                            match self.parameters.get_pitchbend() {
+                            let pitch_bend_parameter_value = self.parameters.get_pitchbend();
+
+                            match pitch_bend_parameter_value {
                                 PitchBendValues::Off => {}
-                                PitchBendValues::DurationToReachTarget(_) => {
-                                    // sample & hold in bitwig probably does the job already
-                                }
-                                PitchBendValues::Immediate => {
+                                _ => {
                                     // incoming note can move before other notes, so we have to recalculate pitches of
                                     // all playing notes
                                     for (position, note) in self
@@ -444,12 +422,62 @@ impl Plugin for ArpegiatorPlugin {
                                                     "Applying pitchbend to pattern {}, at position {}",
                                                     pattern.id, target_pitch
                                                 );
-                                                self.device_out.update_pitch(
-                                                    pattern.id,
-                                                    target_pitch,
-                                                    delta_frames,
-                                                    current_time_in_samples,
-                                                );
+                                                // TODO this difference actually needs to apply relative to the
+                                                // pitchbend already in place. When the output pitchbend is met,
+                                                // we stop tweaking it
+                                                let note_out = self.device_out.find_by_note_id(pattern.id);
+                                                if note_out.is_none() { continue }
+                                                let note_out = note_out.unwrap();
+                                                let difference = note_out.difference_in_millisemitones(target_pitch);
+
+                                                let increment = match pitch_bend_parameter_value {
+                                                    PitchBendValues::DurationToReachTarget(duration_in_seconds) => {
+                                                        let blocks_per_second = self.sample_rate as f32 / self.block_size as f32;
+                                                        let blocks_to_target = (blocks_per_second * duration_in_seconds) as i32;
+                                                        let increment = difference / blocks_to_target;
+                                                        self.pitchbend_in_progress.push(PitchbendInProgress {
+                                                            channel: note_out.channel,
+                                                            increment_per_block: increment,
+                                                            target: difference
+                                                        });
+                                                        self.device_out.update_pitch(
+                                                            pattern.id,
+                                                            increment,  // "increment" is innacurate we need to
+                                                            // start from the pitchbend applied now
+                                                            // patterns can have octave difference, but for now
+                                                            // the pitchbend we'd like is the same. it always
+                                                            // make sense this way as long as pattern follow notes,
+                                                            // but we may want a pitchbend modulation different for
+                                                            // each octave. that's for another implementation,
+                                                            // let's just make sure at that point that the 'target'
+                                                            // pitchbend is reachable while modulation is applied
+                                                            // *after*. Means, the output device might not be the
+                                                            // right place to find that reference.
+
+                                                            /*
+                                                            so :
+                                                            - notes in can have its own pitch bend, so no
+                                                            - patterns in can have their own pitch bend so no
+                                                            - device out can already be consolidation of pitchbends
+                                                              so no
+                                                            - so it seems some intermediary after device note in
+                                                              would be appropriate. it is only related to device
+                                                              note in anyway.
+                                                             */
+                                                            delta_frames,
+                                                            current_time_in_samples,
+                                                        );
+                                                    }
+                                                    PitchBendValues::Immediate => {
+                                                        self.device_out.update_pitch(
+                                                            pattern.id,
+                                                            difference,
+                                                            delta_frames,
+                                                            current_time_in_samples,
+                                                        );
+                                                    }
+                                                    _ => { panic!("'off' is not possible here") }
+                                                };
                                             }
                                         }
                                     }
@@ -472,6 +500,9 @@ impl Plugin for ArpegiatorPlugin {
                                 }
                         }
                         DeviceChange::Ignored { .. } => {}
+                        DeviceChange::NoteLegato { .. } => {
+                            panic!("Legato not supported for notes in")
+                        }
                     }
                 }
                 SourceChange::PatternChange(change) => {
@@ -480,7 +511,11 @@ impl Plugin for ArpegiatorPlugin {
                             // TODO "hold notes" logic
                             match self.notes_device_in.nth(pattern.index as usize) {
                                 None => {}
-                                Some(note) => self.device_out.push_note_on(&pattern, &note, current_time_in_samples),
+                                Some(note) => self.device_out.push_note_on(
+                                    &pattern,
+                                    &note,
+                                    current_time_in_samples,
+                                    self.parameters.get_velocitysource()),
                             }
                         }
 
@@ -505,6 +540,14 @@ impl Plugin for ArpegiatorPlugin {
                                     )
                                 }
                                 Expression::Pressure | Expression::AfterTouch => {
+                                    // TODO output pressure could be a combination of:
+                                    /*
+                                    - pattern pressure
+                                    - note pressure
+                                    - pattern velocity
+                                    - note velocity ( generalization of "pitchbend" note changes affect an ongoing
+                                      pattern )
+                                     */
                                     #[cfg(feature = "pressure_as_channel_pressure")]
                                     {
                                         Some(
@@ -598,7 +641,15 @@ impl Plugin for ArpegiatorPlugin {
                             };
 
                             self.device_out
-                                .push_note_on(&new_pattern, note, current_time_in_samples);
+                                .push_note_on(
+                                    &new_pattern,
+                                    note,
+                                    current_time_in_samples,
+                                    self.parameters.get_velocitysource()
+                                );
+                        },
+                        PatternDeviceChange::Legato { old_pattern, new_pattern , .. } => {
+                            self.device_out.legato(old_pattern.id, new_pattern.id);
                         }
                         PatternDeviceChange::CC { cc: _cc, time: _time } => {
                             #[cfg(feature = "forward_pattern_cc")] {

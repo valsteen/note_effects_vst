@@ -14,11 +14,14 @@ impl RawMessage {
     #[inline]
     pub fn get_bytes(&self) -> &[u8] {
         // RawMessage is 3 bytes long to keep moving around a known-size message, but some actually are 2 bytes long
-        if self.0[0] & 0xF0 == PRESSURE {
-            &self.0[..2]
-        } else {
-            &self.0
-        }
+        &self.0
+
+        // bitwig crashes when receiving pressure messages from a VST ; commented out as it might help, still unlikely
+        // if self.0[0] & 0xF0 == PRESSURE {
+        //     &self.0[..2]
+        // } else {
+        //     &self.0
+        // }
     }
 }
 
@@ -42,7 +45,13 @@ impl From<[u8; 3]> for RawMessage {
 
 impl Into<[u8; 3]> for RawMessage {
     fn into(self) -> [u8; 3] {
-        self.0
+        // attempt of stopping crash at pressure
+        // TODO log what is output
+        if self.0[0] & 0xF0 == PRESSURE {
+            [self.0[0],self.0[1],0]
+        } else {
+            self.0
+        }
     }
 }
 

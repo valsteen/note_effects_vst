@@ -17,6 +17,12 @@ pub struct Note {
     pub pitchbend: i32, // in millisemitones
 }
 
+impl Note {
+    pub fn difference_in_millisemitones(&self, target_pitch: u8) -> i32 {
+        (target_pitch as i32 - self.pitch as i32) * 1000
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NoteIndex {
     pub channel: u8,
