@@ -106,7 +106,9 @@ pub fn process_scheduled_events(
             // back in the scheduled queue
             if event.play_time_in_samples >= current_time_in_samples {
                 if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(event) {
-                    let note_on = match notes_on_to_requeue.get_mut(&event.id) {
+                    let note_off_event = event ;
+
+                    let note_on = match notes_on_to_requeue.get_mut(&note_off_event.id) {
                         None => {
                             // no such note running, skip
                             return ;
@@ -114,14 +116,14 @@ pub fn process_scheduled_events(
                         Some(note_on) => note_on
                     };
 
-                    if event.reason == MessageReason::Live && delay_is_active && !max_notes.should_limit(playing_notes.len()) {
+                    if note_off_event.reason == MessageReason::Live && delay_is_active && !max_notes.should_limit(playing_notes.len() - 1) {
                         // mark the note on as delayed from now on, but don't sent the note off
                         note_on.reason = MessageReason::Delayed;
                         return;
                     }
 
                     if apply_max_notes_to_delayed_notes_only
-                        && event.reason == MessageReason::MaxNotes
+                        && note_off_event.reason == MessageReason::MaxNotes
                         && note_on.reason == MessageReason::Live
                     {
                         // should be redundant, as MaxNotes messages are not generated for Live notes.
@@ -131,10 +133,10 @@ pub fn process_scheduled_events(
 
                     // stop this note, don't requeue
                     playing_notes.remove(&PlayingNoteIndex {
-                        pitch: event.get_pitch(),
-                        channel: event.get_channel(),
+                        pitch: note_off_event.get_pitch(),
+                        channel: note_off_event.get_channel(),
                     });
-                    notes_on_to_requeue.remove(&event.id);
+                    notes_on_to_requeue.remove(&note_off_event.id);
                 }
                 events.push(event.new_midi_event(current_time_in_samples));
             }
