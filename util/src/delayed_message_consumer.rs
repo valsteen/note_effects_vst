@@ -8,12 +8,42 @@ use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 use super::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use super::messages::NoteOff;
 use super::midi_message_type::MidiMessageType;
+use std::fmt::{Display, Formatter};
+use std::fmt;
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq)]
 struct PlayingNoteIndex {
     channel: u8,
     pitch: u8,
 }
+
+#[derive(Eq, PartialEq)]
+pub enum MaxNotesParameter {
+    Infinite,
+    Limited(u8)
+}
+
+impl Display for MaxNotesParameter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MaxNotesParameter::Infinite => "Infinite".to_string(),
+            MaxNotesParameter::Limited(x) => format!("Limited({})", x)
+        }.fmt(f)
+    }
+}
+
+
+impl MaxNotesParameter {
+    pub fn should_limit(&self, currently_playing: usize) -> bool {
+        match self {
+            MaxNotesParameter::Infinite => false,
+            MaxNotesParameter::Limited(limit) => {
+                currently_playing >= *limit as usize
+            }
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum MessageReason {
@@ -58,7 +88,7 @@ pub fn process_scheduled_events(
     samples: usize,
     current_time_in_samples: usize,
     messages: &AbsoluteTimeMidiMessageVector,
-    max_notes: u8,
+    max_notes: MaxNotesParameter,
     apply_max_notes_to_delayed_notes_only: bool,
     delay_is_active: bool,
 ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
@@ -160,7 +190,7 @@ pub fn process_scheduled_events(
 
                     // move the note on to the next sample or the daw might be confused
                     message.play_time_in_samples += 1;
-                } else if max_notes > 0 && playing_notes.len() >= max_notes as usize {
+                } else if max_notes.should_limit(playing_notes.len()) {
                     if let Some(oldest_playing_note) =
                         playing_notes.oldest_playing_note(apply_max_notes_to_delayed_notes_only)
                     {

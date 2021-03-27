@@ -7,6 +7,7 @@ use util::debug::DebugSocket;
 use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::parameters::ParameterConversion;
 use util::{duration_display, HostCallbackLock};
+use util::delayed_message_consumer::MaxNotesParameter;
 
 const PARAMETER_COUNT: usize = 3;
 
@@ -49,6 +50,7 @@ impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
     }
 }
 
+
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
         NoteOffDelayPluginParameters {
@@ -57,12 +59,11 @@ impl NoteOffDelayPluginParameters {
         }
     }
 
-    pub fn get_max_notes(&self) -> u8 {
-        self.get_byte_parameter(Parameter::MaxNotes) / 4
-    }
-
-    pub fn set_max_notes(&self, value: u8) {
-        self.set_byte_parameter(Parameter::MaxNotes, value * 4)
+    pub fn get_max_notes(&self) -> MaxNotesParameter {
+        match self.get_byte_parameter(Parameter::MaxNotes) / 4 {
+            0 => MaxNotesParameter::Infinite,
+            i => MaxNotesParameter::Limited(i)
+        }
     }
 }
 
@@ -130,9 +131,13 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
             }
             Parameter::MaxNotes => {
                 let old_value = self.get_max_notes();
-                let max_notes = f32_to_byte(value) / 4;
+                let byte_value = f32_to_byte(value) ;
+                let max_notes = match byte_value / 4 {
+                    0 => MaxNotesParameter::Infinite,
+                    i => MaxNotesParameter::Limited(i)
+                };
                 if max_notes != old_value {
-                    self.set_max_notes(max_notes)
+                    self.set_byte_parameter(Parameter::MaxNotes, byte_value);
                 }
             }
             Parameter::MaxNotesAppliesToDelayedNotesOnly => {

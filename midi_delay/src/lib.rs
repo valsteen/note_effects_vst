@@ -12,7 +12,7 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters}
 
 use parameters::{MidiDelayParameters, Parameter};
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
+use util::delayed_message_consumer::{process_scheduled_events, MessageReason, MaxNotesParameter};
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
 
@@ -59,7 +59,7 @@ impl MidiDelay {
                 samples,
                 self.current_time_in_samples,
                 &self.message_queue,
-                0,
+                MaxNotesParameter::Infinite,
                 false,
                 self.parameters.get_parameter(Parameter::Delay.into()) > 0.0,
             );
