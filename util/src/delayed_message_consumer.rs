@@ -106,13 +106,15 @@ pub fn process_scheduled_events(
             // back in the scheduled queue
             if event.play_time_in_samples >= current_time_in_samples {
                 if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(event) {
-                    let note_on = notes_on_to_requeue.get_mut(&event.id);
-                    if note_on.is_none() {
-                        return;
-                    } // no such note running, skip
-                    let note_on = note_on.unwrap();
+                    let note_on = match notes_on_to_requeue.get_mut(&event.id) {
+                        None => {
+                            // no such note running, skip
+                            return ;
+                        }
+                        Some(note_on) => note_on
+                    };
 
-                    if event.reason == MessageReason::Live && delay_is_active {
+                    if event.reason == MessageReason::Live && delay_is_active && !max_notes.should_limit(playing_notes.len()) {
                         // mark the note on as delayed from now on, but don't sent the note off
                         note_on.reason = MessageReason::Delayed;
                         return;
