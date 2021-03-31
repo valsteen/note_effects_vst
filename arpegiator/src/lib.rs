@@ -570,7 +570,7 @@ impl Plugin for ArpegiatorPlugin {
                                                         Some(
                                                             AfterTouch {
                                                                 channel: pattern.channel,
-                                                                _pitch,
+                                                                pitch: _pitch,
                                                                 value: pattern.pressure,
                                                             }
                                                             .into(),

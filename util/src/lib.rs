@@ -36,15 +36,15 @@ pub fn make_midi_message(bytes: [u8; 3], delta_frames: i32) -> MidiEvent {
     }
 }
 
-pub fn duration_display(value: f32) -> String {
+pub fn duration_display(seconds: f32) -> String {
     let mut out = String::new();
-    let mut _value = value;
+    let mut _value = seconds;
     if _value >= 1.0 {
-        out += &*format!("{:.0}s ", value);
-        _value -= value.trunc();
+        out += &*format!("{:.0}s ", seconds);
+        _value -= seconds.trunc();
     }
     if _value > 0.0 {
-        out += &*format!("{:3.0}ms", value * 1000.0);
+        out += &*format!("{:3.0}ms", seconds * 1000.0);
     }
     out
 }

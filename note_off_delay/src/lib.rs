@@ -19,6 +19,7 @@ use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
+use crate::parameters::Delay;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -52,7 +53,7 @@ impl NoteOffDelayPlugin {
                 self.parameters.get_max_notes(),
                 self.parameters
                     .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
-                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0,
+                self.parameters.get_delay().is_active(),
             );
 
             self.message_queue = next_message_queue;
@@ -161,12 +162,6 @@ impl Plugin for NoteOffDelayPlugin {
     fn process_events(&mut self, events: &Events) {
         self.debug_events_in(events);
 
-        let note_off_delay = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
-            Parameter::Delay,
-            10.,
-            20.,
-        ));
-
         for event in events.events() {
             let midi_event = if let Event::Midi(midi_event) = event {
                 midi_event
@@ -184,14 +179,15 @@ impl Plugin for NoteOffDelayPlugin {
                         MessageReason::Live,
                     );
 
-                    if note_off_delay > 0 {
+                    if let Delay::Duration(seconds) = self.parameters.get_delay() {
+                        let delay_in_samples = self.seconds_to_samples(seconds);
                         // send two times the note off, the live one will be only used to mark the note on as delayed
                         self.message_queue.insert_message(
                             midi_event.data,
-                            note_off_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
+                            delay_in_samples + midi_event.delta_frames as usize + self.current_time_in_samples,
                             MessageReason::Delayed,
                         );
-                    }
+                    } ;
                 }
                 MidiMessageType::Unsupported => {
                     continue;

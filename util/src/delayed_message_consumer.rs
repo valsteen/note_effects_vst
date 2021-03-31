@@ -27,7 +27,7 @@ impl Display for MaxNotesParameter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MaxNotesParameter::Infinite => "Infinite".to_string(),
-            MaxNotesParameter::Limited(x) => format!("Limited({})", x)
+            MaxNotesParameter::Limited(x) => x.to_string()
         }.fmt(f)
     }
 }
