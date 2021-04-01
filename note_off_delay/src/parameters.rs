@@ -1,9 +1,9 @@
+use log::info;
 use std::sync::Mutex;
 
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
 
-use util::debug::DebugSocket;
 use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::parameters::{ParameterConversion, get_exponential_scale_value};
 use util::{duration_display, HostCallbackLock};
@@ -158,7 +158,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn set_parameter(&self, index: i32, value: f32) {
         match index.into() {
             Parameter::Delay => {
-                DebugSocket::send(&*format!("Parameter {} set to {}", index, value));
+                info!("Parameter {} set to {}", index, value);
                 let old_value = self.get_parameter(index);
                 if (value - old_value).abs() > 0.0001 {
                     self.transfer.set_parameter(index as usize, value)

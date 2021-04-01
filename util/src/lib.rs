@@ -6,7 +6,6 @@ use vst::plugin::HostCallback;
 pub mod absolute_time_midi_message;
 pub mod absolute_time_midi_message_vector;
 pub mod constants;
-pub mod debug;
 pub mod delayed_message_consumer;
 pub mod ipc_payload;
 pub mod logging;

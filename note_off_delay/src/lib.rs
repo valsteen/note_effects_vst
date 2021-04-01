@@ -3,6 +3,7 @@ mod parameters;
 #[macro_use]
 extern crate vst;
 
+use log::info;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::debug::DebugSocket;
+use util::logging::logging_setup;
 use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
@@ -74,7 +75,7 @@ impl NoteOffDelayPlugin {
 
     fn debug_events_in(&mut self, events: &Events) {
         for e in events.events() {
-            DebugSocket::send(&*(format_event(&e) + &*format!(" current time={}", self.current_time_in_samples)));
+            info!("{} current time={}", format_event(&e), self.current_time_in_samples);
         }
     }
 
@@ -105,10 +106,9 @@ impl Plugin for NoteOffDelayPlugin {
     }
 
     fn new(host: HostCallback) -> Self {
+        logging_setup();
+        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp));
         let parameters = NoteOffDelayPluginParameters::new(host);
-        DebugSocket::send(
-            build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
-        );
         NoteOffDelayPlugin {
             current_time_in_samples: 0,
             message_queue: Default::default(),
@@ -146,7 +146,7 @@ impl Plugin for NoteOffDelayPlugin {
                 // if s == "MPE" {
                 //     Yes
                 // } else {
-                //     DebugSocket::send(&*s);
+                //     info!("{}", s) ;
                 //     No
                 // }
                 Maybe
