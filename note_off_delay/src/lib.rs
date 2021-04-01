@@ -20,7 +20,6 @@ use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
-use crate::parameters::Delay;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -90,7 +89,7 @@ impl Plugin for NoteOffDelayPlugin {
             name: "Note Off Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213173,
-            parameters: 3,
+            parameters: 4,
             category: Category::Effect,
             initial_delay: 0,
             version: 1,
@@ -172,22 +171,35 @@ impl Plugin for NoteOffDelayPlugin {
             // TODO: minimum time, maximum time ( with delay )
 
             match MidiMessageType::from(&midi_event.data) {
-                MidiMessageType::NoteOffMessage(_) => {
+                MidiMessageType::NoteOffMessage(note_off) => {
                     self.message_queue.insert_message(
                         midi_event.data,
                         midi_event.delta_frames as usize + self.current_time_in_samples,
                         MessageReason::Live,
                     );
 
-                    if let Delay::Duration(seconds) = self.parameters.get_delay() {
-                        let delay_in_samples = self.seconds_to_samples(seconds);
-                        // send two times the note off, the live one will be only used to mark the note on as delayed
-                        self.message_queue.insert_message(
-                            midi_event.data,
-                            delay_in_samples + midi_event.delta_frames as usize + self.current_time_in_samples,
-                            MessageReason::Delayed,
-                        );
-                    } ;
+                    let delay = self.parameters.get_delay() ;
+
+                    if delay.is_active() {
+                        let note_off_play_time = midi_event.delta_frames as usize + self.current_time_in_samples;
+                        match self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch, note_off_play_time) {
+                            None => {}
+                            Some(note_on) => {
+                                let duration = note_off_play_time - note_on.play_time_in_samples;
+                                match self.parameters.get_delay().apply(duration, self.sample_rate) {
+                                    None => panic!("delay is supposed to be active"),
+                                    Some(new_time) => {
+                                        // send two times the note off, the live one will be only used to mark the note on as delayed
+                                        self.message_queue.insert_message(
+                                            midi_event.data,
+                                            new_time,
+                                            MessageReason::Delayed,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 MidiMessageType::Unsupported => {
                     continue;
