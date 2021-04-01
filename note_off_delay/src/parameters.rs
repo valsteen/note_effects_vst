@@ -105,10 +105,7 @@ pub enum DelayMultiplier {
 
 impl Delay {
     pub fn is_active(&self) -> bool {
-        match (&self.offset, &self.multiplier) {
-            (DelayOffset::Off, DelayMultiplier::Off) => false,
-            _ => true
-        }
+        !matches!((&self.offset, &self.multiplier), (DelayOffset::Off, DelayMultiplier::Off))
     }
 
     pub fn apply(&self, duration_in_samples: usize, sample_rate: f32) -> Option<usize> {
@@ -144,7 +141,7 @@ impl Display for DelayMultiplier {
         match self {
             DelayMultiplier::Off => "off".to_string(),
             DelayMultiplier::Multiplier(multiplier) => {
-                format!("{}x", multiplier)
+                format!("{:.3}x", multiplier)
             }
         }.fmt(f)
     }
@@ -161,7 +158,7 @@ impl From<f32> for DelayOffset {
 
 impl From<f32> for DelayMultiplier {
     fn from(parameter_value: f32) -> Self {
-        match get_exponential_scale_value(parameter_value, 9., 20.) {
+        match get_exponential_scale_value(parameter_value, 19., 20.) {
             x if x == 0.0 => DelayMultiplier::Off,
             value => DelayMultiplier::Multiplier(1.0 + value)
         }
@@ -191,7 +188,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                 }.to_string()
             }
             Parameter::MultiplyLength => {
-                DelayOffset::from(self.get_parameter(Parameter::MultiplyLength as i32)).to_string()
+                DelayMultiplier::from(self.get_parameter(Parameter::MultiplyLength as i32)).to_string()
             }
         }
     }

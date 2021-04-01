@@ -37,9 +37,8 @@ impl DerefMut for AbsoluteTimeMidiMessageVector {
 static NOTE_SEQUENCE_ID: CounterUsize = CounterUsize::new(0);
 
 impl AbsoluteTimeMidiMessageVector {
-    pub fn get_matching_note_on(&self, channel: u8, pitch: u8, play_time_in_samples: usize) -> Option<&AbsoluteTimeMidiMessage> {
+    pub fn get_matching_note_on(&self, channel: u8, pitch: u8) -> Option<&AbsoluteTimeMidiMessage> {
         self.iter().filter(|message|
-            play_time_in_samples < message.play_time_in_samples &&
             match MidiMessageType::from(**message) {
                 MidiMessageType::NoteOnMessage(midi_message) => channel == midi_message.channel && pitch == midi_message.pitch,
                 _ => false
@@ -52,7 +51,7 @@ impl AbsoluteTimeMidiMessageVector {
 
         let id = match MidiMessageType::from(raw_message) {
             MidiMessageType::NoteOffMessage(midi_message) => {
-                match self.get_matching_note_on(midi_message.channel, midi_message.pitch, play_time_in_samples) {
+                match self.get_matching_note_on(midi_message.channel, midi_message.pitch) {
                     Some(note_on_message) => note_on_message.id,
                     None => NOTE_SEQUENCE_ID.inc()
                 }

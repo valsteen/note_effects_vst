@@ -172,27 +172,28 @@ impl Plugin for NoteOffDelayPlugin {
 
             match MidiMessageType::from(&midi_event.data) {
                 MidiMessageType::NoteOffMessage(note_off) => {
+                    let note_off_play_time = midi_event.delta_frames as usize + self.current_time_in_samples;
+
                     self.message_queue.insert_message(
                         midi_event.data,
-                        midi_event.delta_frames as usize + self.current_time_in_samples,
+                        note_off_play_time,
                         MessageReason::Live,
                     );
 
                     let delay = self.parameters.get_delay() ;
 
                     if delay.is_active() {
-                        let note_off_play_time = midi_event.delta_frames as usize + self.current_time_in_samples;
-                        match self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch, note_off_play_time) {
+                        match self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch) {
                             None => {}
                             Some(note_on) => {
                                 let duration = note_off_play_time - note_on.play_time_in_samples;
                                 match self.parameters.get_delay().apply(duration, self.sample_rate) {
                                     None => panic!("delay is supposed to be active"),
-                                    Some(new_time) => {
+                                    Some(new_duration) => {
                                         // send two times the note off, the live one will be only used to mark the note on as delayed
                                         self.message_queue.insert_message(
                                             midi_event.data,
-                                            new_time,
+                                            note_on.play_time_in_samples + new_duration,
                                             MessageReason::Delayed,
                                         );
                                     }
