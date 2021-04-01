@@ -9,7 +9,7 @@ use std::sync::Arc;
 use vst::api::Events;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
 use vst::event::Event;
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
