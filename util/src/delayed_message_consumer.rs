@@ -51,6 +51,7 @@ pub enum MessageReason {
     Delayed, // the same event will exist live and delayed
     MaxNotes,
     Retrigger,
+    PlayUnprocessed
 }
 
 #[derive(Default)]
@@ -251,6 +252,28 @@ pub fn process_scheduled_events(
 
     for (_, event) in notes_on_to_requeue {
         queued_messages.ordered_insert(event)
+    }
+
+    (queued_messages, events)
+}
+
+
+pub fn raw_process_scheduled_events(
+    samples: usize,
+    current_time_in_samples: usize,
+    messages: &AbsoluteTimeMidiMessageVector,
+) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+    let mut queued_messages = AbsoluteTimeMidiMessageVector::default();
+    let mut events: Vec<MidiEvent> = vec![];
+
+    for mut message in messages.iter().copied() {
+        if message.play_time_in_samples < current_time_in_samples + samples {
+            if message.play_time_in_samples >= current_time_in_samples {
+                events.push(message.new_midi_event(current_time_in_samples));
+            }
+        } else {
+            queued_messages.push(message);
+        }
     }
 
     (queued_messages, events)

@@ -5,7 +5,7 @@ use vst::util::ParameterTransfer;
 
 use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::parameters::{ParameterConversion, get_exponential_scale_value};
-use util::{duration_display, HostCallbackLock};
+use util::{duration_display, HostCallbackLock, DelayOffset};
 use util::delayed_message_consumer::MaxNotesParameter;
 use std::fmt::{Display, Formatter};
 use std::fmt;
@@ -93,11 +93,6 @@ pub struct Delay {
 }
 
 
-pub enum DelayOffset {
-    Off,
-    Duration(f32),
-}
-
 pub enum DelayMultiplier {
     Off,
     Multiplier(f32),
@@ -125,16 +120,6 @@ impl Delay {
     }
 }
 
-impl Display for DelayOffset {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            DelayOffset::Off => "off".to_string(),
-            DelayOffset::Duration(seconds) => {
-                duration_display(*seconds)
-            }
-        }.fmt(f)
-    }
-}
 
 impl Display for DelayMultiplier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -147,14 +132,7 @@ impl Display for DelayMultiplier {
     }
 }
 
-impl From<f32> for DelayOffset {
-    fn from(parameter_value: f32) -> Self {
-        match get_exponential_scale_value(parameter_value, 10., 20.) {
-            x if x == 0.0 => DelayOffset::Off,
-            value => DelayOffset::Duration(value)
-        }
-    }
-}
+
 
 impl From<f32> for DelayMultiplier {
     fn from(parameter_value: f32) -> Self {

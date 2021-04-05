@@ -1,5 +1,8 @@
 mod parameters;
 
+#[allow(unused_imports)]
+use log::{error, info};
+
 #[macro_use]
 extern crate vst;
 
@@ -12,9 +15,12 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters}
 
 use parameters::{MidiDelayParameters, Parameter};
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::{process_scheduled_events, MessageReason, MaxNotesParameter};
+use util::delayed_message_consumer::{process_scheduled_events, MessageReason, MaxNotesParameter, raw_process_scheduled_events};
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
+use vst::host::Host;
+use util::logging::logging_setup;
+use util::SyncDuration;
 
 plugin_main!(MidiDelay);
 
@@ -23,6 +29,7 @@ pub struct MidiDelay {
     message_queue: AbsoluteTimeMidiMessageVector,
     parameters: Arc<MidiDelayParameters>,
     sample_rate: f32,
+    bpm: f64,
     send_buffer: RefCell<SendEventBuffer>,
 }
 
@@ -33,6 +40,7 @@ impl Default for MidiDelay {
             message_queue: Default::default(),
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
+            bpm: 0.0,
             send_buffer: Default::default(),
         }
     }
@@ -55,19 +63,31 @@ impl MidiDelay {
 
     fn send_events(&mut self, samples: usize) {
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
-            let (next_message_queue, events) = process_scheduled_events(
+            let (next_message_queue, events) = raw_process_scheduled_events(
                 samples,
                 self.current_time_in_samples,
                 &self.message_queue,
-                MaxNotesParameter::Infinite,
-                false,
-                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0,
             );
 
             self.message_queue = next_message_queue;
             self.send_buffer
                 .borrow_mut()
                 .send_events(events, &mut host_callback_lock.host);
+        }
+    }
+
+    fn update_bpm(&mut self) {
+        use vst::api::TimeInfoFlags;
+        if let Ok(host_callback_lock) = self.parameters.host.lock() {
+            match host_callback_lock.host.get_time_info(TimeInfoFlags::TEMPO_VALID.bits()) {
+                None => (),
+                Some(ti) => {
+                    if ti.flags & TimeInfoFlags::TEMPO_VALID.bits() != 0 {
+                        self.bpm = ti.tempo;
+                        info!("{}", self.bpm);
+                    }
+                }
+            }
         }
     }
 }
@@ -78,7 +98,7 @@ impl Plugin for MidiDelay {
             name: "Midi Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 133498,
-            parameters: 1,
+            parameters: 2,
             category: Category::Effect,
             initial_delay: 0,
             version: 2,
@@ -94,6 +114,8 @@ impl Plugin for MidiDelay {
     }
 
     fn new(host: HostCallback) -> Self {
+        logging_setup();
+        info!("{}", build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp));
         let parameters = MidiDelayParameters::new(host);
 
         MidiDelay {
@@ -101,6 +123,7 @@ impl Plugin for MidiDelay {
             message_queue: Default::default(),
             parameters: Arc::new(parameters),
             sample_rate: 44100.0,
+            bpm: 0.0,
             send_buffer: Default::default(),
         }
     }
@@ -131,12 +154,19 @@ impl Plugin for MidiDelay {
     }
 
     fn process_events(&mut self, events: &Events) {
-        let midi_delay = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
+        self.update_bpm();
+        let mut midi_delay = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
             Parameter::Delay,
             1.,
             80.,
         ));
-
+        let sync_delay = SyncDuration::from(self.parameters.get_parameter(Parameter::SyncDelay.into()));
+        match sync_delay.delay_to_samples(self.bpm, self.sample_rate) {
+            None => {}
+            Some(delay) => {
+                midi_delay += delay
+            }
+        }
         for event in events.events() {
             let midi_event = if let Event::Midi(midi_event) = event {
                 midi_event
@@ -144,31 +174,10 @@ impl Plugin for MidiDelay {
                 continue;
             };
 
-            if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(&midi_event.data) {
-                // TODO because of changes in process_scheduled_events specific to delay note off plugin,
-                // note offs need a special handling ; not all usages of process_scheduled_events should have to care
-                // about that
-
-                self.message_queue.insert_message(
-                    midi_event.data,
-                    midi_event.delta_frames as usize + self.current_time_in_samples,
-                    MessageReason::Live,
-                );
-
-                if midi_delay > 0 {
-                    self.message_queue.insert_message(
-                        midi_event.data,
-                        midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
-                        MessageReason::Delayed,
-                    );
-                }
-            } else {
-                self.message_queue.insert_message(
-                    midi_event.data,
-                    midi_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
-                    MessageReason::Live,
-                );
-            }
+            self.message_queue.raw_insert(
+                midi_event.data,
+                midi_event.delta_frames as usize + self.current_time_in_samples + midi_delay,
+            );
         }
     }
 }

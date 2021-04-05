@@ -46,6 +46,18 @@ impl AbsoluteTimeMidiMessageVector {
         ).last()
     }
 
+    pub fn raw_insert(&mut self, data: [u8; 3], play_time_in_samples: usize) {
+        // insert in vector, disregarding matching note on/off
+        let message = AbsoluteTimeMidiMessage {
+            data: data.into(),
+            id: NOTE_SEQUENCE_ID.inc(),
+            play_time_in_samples,
+            reason: MessageReason::PlayUnprocessed
+        };
+
+        self.ordered_insert(message);
+    }
+
     pub fn insert_message(&mut self, data: [u8; 3], play_time_in_samples: usize, reason: MessageReason) {
         let raw_message = RawMessage::from(data) ;
 

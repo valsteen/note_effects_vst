@@ -183,7 +183,7 @@ impl Plugin for NoteOffDelayPlugin {
                     let delay = self.parameters.get_delay() ;
 
                     if delay.is_active() {
-                        match self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch) {
+                        match self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch).cloned() {
                             None => {}
                             Some(note_on) => {
                                 let duration = note_off_play_time - note_on.play_time_in_samples;

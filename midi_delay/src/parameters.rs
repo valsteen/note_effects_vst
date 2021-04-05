@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use util::parameters::ParameterConversion;
-use util::{duration_display, HostCallbackLock};
+use util::{duration_display, HostCallbackLock, SyncDuration};
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
 
@@ -12,13 +12,15 @@ pub struct MidiDelayParameters {
 #[repr(i32)]
 pub enum Parameter {
     Delay = 0,
+    SyncDelay = 1,
 }
 
 impl From<i32> for Parameter {
     fn from(i: i32) -> Self {
         match i {
             0 => Parameter::Delay,
-            _ => panic!(format!("No such Parameter {}", i)),
+            1 => Parameter::SyncDelay,
+            _ => panic!("No such Parameter {}", i),
         }
     }
 }
@@ -35,7 +37,7 @@ impl ParameterConversion<Parameter> for MidiDelayParameters {
     }
 
     fn get_parameter_count() -> usize {
-        1
+        2
     }
 }
 
@@ -43,7 +45,7 @@ impl MidiDelayParameters {
     pub fn new(host: HostCallback) -> Self {
         MidiDelayParameters {
             host: Mutex::new(HostCallbackLock { host }),
-            transfer: ParameterTransfer::new(1),
+            transfer: ParameterTransfer::new(2),
         }
     }
 }
@@ -59,12 +61,18 @@ impl PluginParameters for MidiDelayParameters {
                     "Off".to_string()
                 }
             }
+            Parameter::SyncDelay => {
+                let value = self.get_parameter(Parameter::SyncDelay.into());
+                let tempo_delay = SyncDuration::from(value);
+                tempo_delay.to_string()
+            }
         }
     }
 
     fn get_parameter_name(&self, index: i32) -> String {
         match Parameter::from(index as i32) {
             Parameter::Delay => "Delay",
+            Parameter::SyncDelay => "Sync Delay"
         }
         .to_string()
     }
@@ -75,9 +83,9 @@ impl PluginParameters for MidiDelayParameters {
 
     fn set_parameter(&self, index: i32, value: f32) {
         match index.into() {
-            Parameter::Delay => {
+            Parameter::Delay | Parameter::SyncDelay => {
                 let old_value = self.get_parameter(index);
-                if (value - old_value).abs() > 0.00001 {
+                if (value - old_value).abs() > 0.0001 || (value == 0.0 && old_value != 0.0) {
                     self.transfer.set_parameter(index as usize, value)
                 }
             }
