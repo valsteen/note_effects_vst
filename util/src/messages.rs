@@ -55,9 +55,9 @@ pub struct NoteOn {
     pub velocity: u8,
 }
 
-impl Into<RawMessage> for NoteOn {
-    fn into(self) -> RawMessage {
-        [NOTE_ON + self.channel, self.pitch, self.velocity].into()
+impl From<NoteOn> for RawMessage {
+    fn from(note_on: NoteOn) -> Self {
+        RawMessage([NOTE_ON + note_on.channel, note_on.pitch, note_on.velocity])
     }
 }
 
@@ -121,9 +121,9 @@ impl From<NoteOn> for NoteOff {
     }
 }
 
-impl Into<RawMessage> for NoteOff {
-    fn into(self) -> RawMessage {
-        [NOTE_OFF + self.channel, self.pitch, self.velocity].into()
+impl From<NoteOff> for RawMessage {
+    fn from(note_off: NoteOff) -> Self {
+        RawMessage([NOTE_OFF + note_off.channel, note_off.pitch, note_off.velocity])
     }
 }
 
@@ -148,9 +148,9 @@ pub struct Pressure {
     pub value: u8,
 }
 
-impl Into<RawMessage> for Pressure {
-    fn into(self) -> RawMessage {
-        [PRESSURE + self.channel, self.value, 0].into()
+impl From<Pressure> for RawMessage {
+    fn from(pressure: Pressure) -> Self {
+        RawMessage([PRESSURE + pressure.channel, pressure.value, 0])
     }
 }
 
@@ -180,14 +180,14 @@ impl ChannelMessage for PitchBend {
     }
 }
 
-impl Into<RawMessage> for PitchBend {
-    fn into(self) -> RawMessage {
+impl From<PitchBend> for RawMessage {
+    fn from(pitch_bend: PitchBend) -> Self {
         // 96000 millisemitones are expressed over the possible values of 14 bits ( 16384 )
         // which never gets us an exact integer amount of semitones
-        let value = ((self.millisemitones + 48000) * 16384) / 96000;
+        let value = ((pitch_bend.millisemitones + 48000) * 16384) / 96000;
         let msb = value >> 7;
         let lsb = value & 0x7F;
-        [self.channel + PITCHBEND, lsb as u8, msb as u8].into()
+        RawMessage([pitch_bend.channel + PITCHBEND, lsb as u8, msb as u8])
     }
 }
 
@@ -218,9 +218,9 @@ impl ChannelMessage for AfterTouch {
     }
 }
 
-impl Into<RawMessage> for AfterTouch {
-    fn into(self) -> RawMessage {
-        [self.channel + AFTERTOUCH, self.pitch, self.value].into()
+impl From<AfterTouch> for RawMessage {
+    fn from(aftertouch: AfterTouch) -> Self {
+        RawMessage([aftertouch.channel + AFTERTOUCH, aftertouch.pitch, aftertouch.value])
     }
 }
 
@@ -240,9 +240,9 @@ pub struct CC {
     pub value: u8,
 }
 
-impl Into<RawMessage> for CC {
-    fn into(self) -> RawMessage {
-        [0xB0 + self.channel, self.cc, self.value].into()
+impl From<CC> for RawMessage {
+    fn from(cc: CC) -> Self {
+        RawMessage([0xB0 + cc.channel, cc.cc, cc.value])
     }
 }
 
@@ -287,13 +287,12 @@ pub struct Timbre {
     pub value: u8,
 }
 
-impl Into<RawMessage> for Timbre {
-    fn into(self) -> RawMessage {
-        CC {
-            channel: self.channel,
+impl From<Timbre> for RawMessage {
+    fn from(timbre: Timbre) -> Self {
+        RawMessage::from(CC {
+            channel: timbre.channel,
             cc: TIMBRECC,
-            value: self.value,
-        }
-        .into()
+            value: timbre.value,
+        })
     }
 }

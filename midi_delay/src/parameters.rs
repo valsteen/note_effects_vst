@@ -25,9 +25,9 @@ impl From<i32> for Parameter {
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(p: Parameter) -> Self {
+        p as i32
     }
 }
 

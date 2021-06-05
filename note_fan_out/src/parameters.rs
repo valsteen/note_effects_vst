@@ -36,14 +36,14 @@ impl From<i32> for Parameter {
             0 => Parameter::Steps,
             1 => Parameter::Selection,
             2 => Parameter::ChannelDistribute,
-            _ => panic!(format!("No such Parameter {}", i)),
+            _ => panic!("No such Parameter {}", i),
         }
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(p: Parameter) -> Self {
+        p as i32
     }
 }
 
@@ -89,9 +89,9 @@ impl From<f32> for ChannelDistribution {
     }
 }
 
-impl Into<f32> for ChannelDistribution {
-    fn into(self) -> f32 {
-        match self {
+impl From<ChannelDistribution> for f32 {
+    fn from(cd: ChannelDistribution) -> f32 {
+        match cd {
             ChannelDistribution::Channels(value) => {
                 // normalize over 15 values, first range is off
                 ((value as f32 - 2.) / 13.) * 14. / 15. + 1. / 15.

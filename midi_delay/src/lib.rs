@@ -15,8 +15,7 @@ use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters}
 
 use parameters::{MidiDelayParameters, Parameter};
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::{process_scheduled_events, MessageReason, MaxNotesParameter, raw_process_scheduled_events};
-use util::midi_message_type::MidiMessageType;
+use util::delayed_message_consumer::raw_process_scheduled_events;
 use util::parameters::ParameterConversion;
 use vst::host::Host;
 use util::logging::logging_setup;

@@ -5,7 +5,7 @@ use vst::util::ParameterTransfer;
 
 use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
 use util::parameters::{ParameterConversion, get_exponential_scale_value};
-use util::{duration_display, HostCallbackLock, DelayOffset};
+use util::{HostCallbackLock, DelayOffset};
 use util::delayed_message_consumer::MaxNotesParameter;
 use std::fmt::{Display, Formatter};
 use std::fmt;
@@ -37,9 +37,9 @@ impl From<i32> for Parameter {
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(p: Parameter) -> Self {
+        p as i32
     }
 }
 

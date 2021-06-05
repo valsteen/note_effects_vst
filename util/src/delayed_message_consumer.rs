@@ -266,7 +266,7 @@ pub fn raw_process_scheduled_events(
     let mut queued_messages = AbsoluteTimeMidiMessageVector::default();
     let mut events: Vec<MidiEvent> = vec![];
 
-    for mut message in messages.iter().copied() {
+    for message in messages.iter().copied() {
         if message.play_time_in_samples < current_time_in_samples + samples {
             if message.play_time_in_samples >= current_time_in_samples {
                 events.push(message.new_midi_event(current_time_in_samples));

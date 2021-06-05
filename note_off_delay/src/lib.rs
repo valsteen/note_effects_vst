@@ -68,6 +68,7 @@ impl NoteOffDelayPlugin {
         1.0 / self.sample_rate
     }
 
+    #[allow(dead_code)]
     fn seconds_to_samples(&self, seconds: f32) -> usize {
         (seconds * self.sample_rate) as usize
     }

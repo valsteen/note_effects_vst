@@ -303,13 +303,7 @@ impl Device {
                         let add_note = output.remove(position);
 
                         if let Some(position) = output.iter().position(|change| {
-                            match change {
-                                DeviceChange::NoteExpressionChange { time: time_2, expression, note: note_2 }
-                                if time_1 == *time_2 && note_1.channel == note_2.channel => {
-                                    matches!(expression, Expression::PitchBend)
-                                }
-                                _ => false
-                            }
+                            matches!(change, DeviceChange::NoteExpressionChange { time: time_2, expression: Expression::PitchBend, note: note_2 } if time_1 == *time_2 && note_1.channel == note_2.channel)
                         }) {
                             output.remove(position);
                         }

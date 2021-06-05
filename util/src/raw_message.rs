@@ -1,13 +1,13 @@
 use super::messages::ChannelMessage;
 use crate::constants::PRESSURE;
 use core::clone::Clone;
-use core::convert::{From, Into};
+use core::convert::From;
 use core::ops::Index;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 #[derive(Copy, Debug, Serialize, Deserialize)]
-pub struct RawMessage([u8; 3]);
+pub struct RawMessage(pub [u8; 3]);
 
 
 impl RawMessage {
@@ -43,14 +43,13 @@ impl From<[u8; 3]> for RawMessage {
     }
 }
 
-impl Into<[u8; 3]> for RawMessage {
-    fn into(self) -> [u8; 3] {
-        // attempt of stopping crash at pressure
-        // TODO log what is output
-        if self.0[0] & 0xF0 == PRESSURE {
-            [self.0[0],self.0[1],0]
+
+impl From<RawMessage> for [u8; 3] {
+    fn from(raw_message: RawMessage) -> Self {
+        if raw_message.0[0] & 0xF0 == PRESSURE {
+            [raw_message.0[0],raw_message.0[1],0]
         } else {
-            self.0
+            raw_message.0
         }
     }
 }

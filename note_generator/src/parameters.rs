@@ -36,14 +36,14 @@ impl From<i32> for Parameter {
             6 => Parameter::Trigger,
             7 => Parameter::TriggeredPitch,
             8 => Parameter::TriggeredChannel,
-            _ => panic!(format!("No such Parameter {}", i)),
+            _ => panic!("No such Parameter {}", i),
         }
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(parameter: Parameter) -> Self {
+        parameter as i32
     }
 }
 
