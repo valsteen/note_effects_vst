@@ -3,12 +3,12 @@ use std::sync::Mutex;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
 
-use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
-use util::parameters::{ParameterConversion, get_exponential_scale_value};
-use util::{HostCallbackLock, Duration};
-use util::delayed_message_consumer::MaxNotesParameter;
-use std::fmt::{Display, Formatter};
 use std::fmt;
+use std::fmt::{Display, Formatter};
+use util::delayed_message_consumer::MaxNotesParameter;
+use util::parameter_value_conversion::{f32_to_bool, f32_to_byte};
+use util::parameters::{get_exponential_scale_value, ParameterConversion};
+use util::{Duration, HostCallbackLock};
 
 pub const PARAMETER_COUNT: usize = 5;
 
@@ -23,7 +23,7 @@ pub enum Parameter {
     MaxNotes,
     MaxNotesAppliesToDelayedNotesOnly,
     MultiplyLength,
-    Threshold
+    Threshold,
 }
 
 impl From<i32> for Parameter {
@@ -55,7 +55,6 @@ impl ParameterConversion<Parameter> for NoteOffDelayPluginParameters {
     }
 }
 
-
 impl NoteOffDelayPluginParameters {
     pub fn new(host: HostCallback) -> Self {
         NoteOffDelayPluginParameters {
@@ -67,7 +66,7 @@ impl NoteOffDelayPluginParameters {
     pub fn get_max_notes(&self) -> MaxNotesParameter {
         match self.get_byte_parameter(Parameter::MaxNotes) / 4 {
             0 => MaxNotesParameter::Infinite,
-            i => MaxNotesParameter::Limited(i)
+            i => MaxNotesParameter::Limited(i),
         }
     }
 
@@ -89,13 +88,11 @@ impl Default for NoteOffDelayPluginParameters {
     }
 }
 
-
 pub struct Delay {
     pub offset: Duration,
     pub multiplier: DelayMultiplier,
-    pub threshold: Duration
+    pub threshold: Duration,
 }
-
 
 pub enum DelayMultiplier {
     Off,
@@ -112,25 +109,24 @@ impl Delay {
             if let Duration::Duration(threshold) = self.threshold {
                 let threshold_in_samples = (threshold * sample_rate) as usize;
                 if duration_in_samples < threshold_in_samples {
-                    return Some(duration_in_samples)
+                    return Some(duration_in_samples);
                 }
             }
 
             let duration_in_samples = match self.multiplier {
                 DelayMultiplier::Off => duration_in_samples as f32,
-                DelayMultiplier::Multiplier(x) => x * duration_in_samples as f32
+                DelayMultiplier::Multiplier(x) => x * duration_in_samples as f32,
             };
 
             Some(match self.offset {
                 Duration::Off => duration_in_samples as usize,
-                Duration::Duration(x) => (duration_in_samples + x * sample_rate) as usize
+                Duration::Duration(x) => (duration_in_samples + x * sample_rate) as usize,
             })
         } else {
             None
         }
     }
 }
-
 
 impl Display for DelayMultiplier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -139,17 +135,16 @@ impl Display for DelayMultiplier {
             DelayMultiplier::Multiplier(multiplier) => {
                 format!("{:.3}x", multiplier)
             }
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }
-
-
 
 impl From<f32> for DelayMultiplier {
     fn from(parameter_value: f32) -> Self {
         match get_exponential_scale_value(parameter_value, 19., 20.) {
             x if x == 0.0 => DelayMultiplier::Off,
-            value => DelayMultiplier::Multiplier(1.0 + value)
+            value => DelayMultiplier::Multiplier(1.0 + value),
         }
     }
 }
@@ -158,9 +153,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
     fn get_parameter_text(&self, index: i32) -> String {
         let value = self.get_parameter(index);
         match index.into() {
-            Parameter::DelayOffset | Parameter::Threshold => {
-                Duration::from(value).to_string()
-            }
+            Parameter::DelayOffset | Parameter::Threshold => Duration::from(value).to_string(),
 
             Parameter::MaxNotes => {
                 if value == 0.0 {
@@ -175,11 +168,10 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                     "On"
                 } else {
                     "Off"
-                }.to_string()
+                }
+                .to_string()
             }
-            Parameter::MultiplyLength => {
-                DelayMultiplier::from(value).to_string()
-            }
+            Parameter::MultiplyLength => DelayMultiplier::from(value).to_string(),
         }
     }
 
@@ -189,9 +181,9 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
             Parameter::MaxNotes => "Max Notes",
             Parameter::MaxNotesAppliesToDelayedNotesOnly => "Apply max notes to delayed notes only",
             Parameter::MultiplyLength => "Length multiplier",
-            Parameter::Threshold => "Threshold"
+            Parameter::Threshold => "Threshold",
         }
-            .to_string()
+        .to_string()
     }
 
     fn get_parameter(&self, index: i32) -> f32 {
@@ -211,7 +203,7 @@ impl vst::plugin::PluginParameters for NoteOffDelayPluginParameters {
                 let byte_value = f32_to_byte(value);
                 let max_notes = match byte_value / 4 {
                     0 => MaxNotesParameter::Infinite,
-                    i => MaxNotesParameter::Limited(i)
+                    i => MaxNotesParameter::Limited(i),
                 };
                 if max_notes != old_value {
                     self.set_byte_parameter(Parameter::MaxNotes, byte_value);

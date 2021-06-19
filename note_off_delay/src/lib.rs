@@ -1,4 +1,5 @@
 mod parameters;
+mod tests;
 
 #[macro_use]
 extern crate vst;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 use vst::api::Events;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::event::Event;
+use vst::event::{Event, MidiEvent};
 use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use parameters::NoteOffDelayPluginParameters;
@@ -45,19 +46,24 @@ impl Default for NoteOffDelayPlugin {
 }
 
 impl NoteOffDelayPlugin {
-    fn send_events(&mut self, samples: usize) {
-        if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
-            let (next_message_queue, events) = process_scheduled_events(
-                samples,
-                self.current_time_in_samples,
-                &self.message_queue,
-                self.parameters.get_max_notes(),
-                self.parameters
-                    .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
-                self.parameters.get_delay().is_active(),
-            );
+    fn process_scheduled_events(&self, samples: usize) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+        process_scheduled_events(
+            samples,
+            self.current_time_in_samples,
+            &self.message_queue,
+            self.parameters.get_max_notes(),
+            self.parameters
+                .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
+            self.parameters.get_delay().is_active(),
+        )
+    }
 
-            self.message_queue = next_message_queue;
+    fn send_events(&mut self, samples: usize) {
+        let (next_message_queue, events) = self.process_scheduled_events(samples);
+
+        self.message_queue = next_message_queue;
+
+        if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
             self.send_buffer
                 .borrow_mut()
                 .send_events(events, &mut host_callback_lock.host);
