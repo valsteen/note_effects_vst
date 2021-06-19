@@ -51,27 +51,28 @@ pub fn duration_display(seconds: f32) -> String {
     out
 }
 
-impl Display for DelayOffset {
+impl Display for Duration {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DelayOffset::Off => "off".to_string(),
-            DelayOffset::Duration(seconds) => {
+            Duration::Off => "off".to_string(),
+            Duration::Duration(seconds) => {
                 duration_display(*seconds)
             }
         }.fmt(f)
     }
 }
 
-pub enum DelayOffset {
+pub enum Duration {
     Off,
     Duration(f32),
 }
 
-impl From<f32> for DelayOffset {
+
+impl From<f32> for Duration {
     fn from(parameter_value: f32) -> Self {
         match get_exponential_scale_value(parameter_value, 10., 20.) {
-            x if x == 0.0 => DelayOffset::Off,
-            value => DelayOffset::Duration(value)
+            x if x == 0.0 => Duration::Off,
+            value => Duration::Duration(value)
         }
     }
 }

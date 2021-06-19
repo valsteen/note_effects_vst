@@ -20,6 +20,7 @@ use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
+use crate::parameters::PARAMETER_COUNT;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -90,7 +91,7 @@ impl Plugin for NoteOffDelayPlugin {
             name: "Note Off Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213173,
-            parameters: 4,
+            parameters: PARAMETER_COUNT as i32,
             category: Category::Effect,
             initial_delay: 0,
             version: 1,
@@ -188,7 +189,7 @@ impl Plugin for NoteOffDelayPlugin {
                             None => {}
                             Some(note_on) => {
                                 let duration = note_off_play_time - note_on.play_time_in_samples;
-                                match self.parameters.get_delay().apply(duration, self.sample_rate) {
+                                match delay.apply(duration, self.sample_rate) {
                                     None => panic!("delay is supposed to be active"),
                                     Some(new_duration) => {
                                         // send two times the note off, the live one will be only used to mark the note on as delayed
