@@ -82,11 +82,11 @@ impl PlayingNotes {
     }
 }
 
-pub struct ScheduledEventsHelper {
+struct ScheduledEventsHelper {
     playing_notes: PlayingNotes,
-    pub queued_messages: AbsoluteTimeMidiMessageVector,
+    queued_messages: AbsoluteTimeMidiMessageVector,
     notes_on_to_requeue: HashMap<usize, AbsoluteTimeMidiMessage>,
-    pub events: Vec<MidiEvent>,
+    events: Vec<MidiEvent>,
     buffer_duration_in_samples: usize,
     delay_is_active: bool,
     max_notes: MaxNotesParameter,
@@ -94,8 +94,26 @@ pub struct ScheduledEventsHelper {
     current_time_in_samples: usize,
 }
 
+pub fn process_scheduled_events(
+    buffer_duration_in_samples: usize,
+    delay_is_active: bool,
+    max_notes: MaxNotesParameter,
+    apply_max_notes_to_delayed_notes_only: bool,
+    current_time_in_samples: usize,
+    messages: &AbsoluteTimeMidiMessageVector,
+) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+    let helper = ScheduledEventsHelper::new(
+        buffer_duration_in_samples,
+        delay_is_active,
+        max_notes,
+        apply_max_notes_to_delayed_notes_only,
+        current_time_in_samples,
+    );
+    helper.process_scheduled_events(messages)
+}
+
 impl ScheduledEventsHelper {
-    pub fn new(
+    fn new(
         buffer_duration_in_samples: usize,
         delay_is_active: bool,
         max_notes: MaxNotesParameter,
@@ -174,7 +192,10 @@ impl ScheduledEventsHelper {
         }
     }
 
-    pub fn process_scheduled_events(mut self, messages: &AbsoluteTimeMidiMessageVector) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+    fn process_scheduled_events(
+        mut self,
+        messages: &AbsoluteTimeMidiMessageVector,
+    ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
         for mut message in messages.iter().copied() {
             if message.play_time_in_samples < self.current_time_in_samples {
                 match MidiMessageType::from(message) {
@@ -265,7 +286,7 @@ impl ScheduledEventsHelper {
 
         for (_, event) in self.notes_on_to_requeue.drain() {
             self.queued_messages.ordered_insert(event)
-        };
+        }
 
         (self.queued_messages, self.events)
     }

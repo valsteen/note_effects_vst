@@ -17,7 +17,7 @@ use crate::parameters::PARAMETER_COUNT;
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::delayed_message_consumer::{MessageReason, ScheduledEventsHelper};
+use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
 use util::logging::logging_setup;
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
@@ -47,20 +47,20 @@ impl Default for NoteOffDelayPlugin {
 
 impl NoteOffDelayPlugin {
     fn process_scheduled_events(&self, samples: usize) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
-        let helper = ScheduledEventsHelper::new(
+        process_scheduled_events(
             samples,
             self.parameters.get_delay().is_active(),
             self.parameters.get_max_notes(),
             self.parameters
                 .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
             self.current_time_in_samples,
-        );
-        helper.process_scheduled_events(&self.message_queue)
+            &self.message_queue,
+        )
     }
 
     fn send_events(&mut self, samples: usize) {
-        let (next_message_queue, events) = self.process_scheduled_events(samples);
-        self.message_queue = next_message_queue;
+        let (queued_messages, events) = self.process_scheduled_events(samples);
+        self.message_queue = queued_messages;
 
         if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
             self.send_buffer
