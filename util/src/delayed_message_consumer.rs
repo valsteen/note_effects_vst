@@ -197,8 +197,10 @@ impl ScheduledEventsHelper {
         messages: &AbsoluteTimeMidiMessageVector,
     ) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
         for mut message in messages.iter().copied() {
+            let midi_message_type = MidiMessageType::from(message);
+
             if message.play_time_in_samples < self.current_time_in_samples {
-                match MidiMessageType::from(message) {
+                match midi_message_type {
                     MidiMessageType::NoteOnMessage(_) => {}
                     _ => {
                         panic!("Only pending note on are expected to be found in the past")
@@ -206,7 +208,7 @@ impl ScheduledEventsHelper {
                 }
             };
 
-            match MidiMessageType::from(message) {
+            match midi_message_type {
                 MidiMessageType::NoteOnMessage(note_on) => {
                     // if still playing : generate note off at current sample, put note on with
                     // delta + 1 in the queue
@@ -232,12 +234,10 @@ impl ScheduledEventsHelper {
                         // move the note on to the next sample or the daw might be confused
                         message.play_time_in_samples += 1;
                     } else if self.max_notes.should_limit(self.playing_notes.len()) {
-                        if let Some(oldest_playing_note) = self
+                        if let Some(&oldest_playing_note) = self
                             .playing_notes
                             .oldest_playing_note(self.apply_max_notes_to_delayed_notes_only)
                         {
-                            let oldest_playing_note = *oldest_playing_note; // drop the borrow
-
                             self.add_event(AbsoluteTimeMidiMessage {
                                 data: NoteOff {
                                     channel: oldest_playing_note.get_channel(),

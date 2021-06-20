@@ -93,14 +93,14 @@ pub enum DeviceChange {
 
 impl TimedEvent for DeviceChange {
     fn timestamp(&self) -> usize {
-        match self {
-            DeviceChange::AddNote { time, .. } => *time,
-            DeviceChange::RemoveNote { time, .. } => *time,
-            DeviceChange::NoteExpressionChange { time, .. } => *time,
-            DeviceChange::ReplaceNote { time, .. } => *time,
-            DeviceChange::CCChange { time, .. } => *time,
-            DeviceChange::Ignored { time, .. } => *time,
-            DeviceChange::NoteLegato { time, .. } => *time
+        *match self {
+            DeviceChange::AddNote { time, .. } => time,
+            DeviceChange::RemoveNote { time, .. } => time,
+            DeviceChange::NoteExpressionChange { time, .. } => time,
+            DeviceChange::ReplaceNote { time, .. } => time,
+            DeviceChange::CCChange { time, .. } => time,
+            DeviceChange::Ignored { time, .. } => time,
+            DeviceChange::NoteLegato { time, .. } => time
         }
     }
 
@@ -298,12 +298,12 @@ impl Device {
                 // remove note is sorted as being before add note
                 if let DeviceChange::RemoveNote { time: time_1, note: note_1 } = change_1 {
                     if let Some(position) = output.iter().position(|change| {
-                        matches!(change, DeviceChange::AddNote { time: time_2, note: note_2 } if time_1 == *time_2 && note_1.pitch == note_2.pitch && note_1.channel == note_2.channel)
+                        matches!(change, &DeviceChange::AddNote { time: time_2, note: note_2 } if time_1 == time_2 && note_1.pitch == note_2.pitch && note_1.channel == note_2.channel)
                     }) {
                         let add_note = output.remove(position);
 
                         if let Some(position) = output.iter().position(|change| {
-                            matches!(change, DeviceChange::NoteExpressionChange { time: time_2, expression: Expression::PitchBend, note: note_2 } if time_1 == *time_2 && note_1.channel == note_2.channel)
+                            matches!(change, &DeviceChange::NoteExpressionChange { time: time_2, expression: Expression::PitchBend, note: note_2 } if time_1 == time_2 && note_1.channel == note_2.channel)
                         }) {
                             output.remove(position);
                         }

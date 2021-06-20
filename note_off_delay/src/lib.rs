@@ -22,6 +22,7 @@ use util::logging::logging_setup;
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
+use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -171,13 +172,15 @@ impl Plugin for NoteOffDelayPlugin {
     fn process_events(&mut self, events: &Events) {
         self.debug_events_in(events);
 
-        for event in events.events() {
-            let midi_event = if let Event::Midi(midi_event) = event {
-                midi_event
+        let midi_events = events.events().filter_map(
+            |event| if let Event::Midi(midi_event) = event {
+                Some(midi_event)
             } else {
-                continue;
-            };
+                None
+            }
+        );
 
+        for midi_event in midi_events {
             // TODO: minimum time, maximum time ( with delay )
 
             match MidiMessageType::from(&midi_event.data) {
@@ -190,26 +193,17 @@ impl Plugin for NoteOffDelayPlugin {
                     let delay = self.parameters.get_delay();
 
                     if delay.is_active() {
-                        match self
-                            .message_queue
-                            .get_matching_note_on(note_off.channel, note_off.pitch)
-                            .cloned()
-                        {
-                            None => {}
-                            Some(note_on) => {
-                                let duration = note_off_play_time - note_on.play_time_in_samples;
-                                match delay.apply(duration, self.sample_rate) {
-                                    None => panic!("delay is supposed to be active"),
-                                    Some(new_duration) => {
-                                        // send two times the note off, the live one will be only used to mark the note on as delayed
-                                        self.message_queue.insert_message(
-                                            midi_event.data,
-                                            note_on.play_time_in_samples + new_duration,
-                                            MessageReason::Delayed,
-                                        );
-                                    }
-                                }
-                            }
+                        let matching_note_on = self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch);
+                        if let Some(&AbsoluteTimeMidiMessage { play_time_in_samples,.. }) = matching_note_on {
+                            let duration = note_off_play_time - play_time_in_samples;
+                            let new_duration = delay.apply(duration, self.sample_rate).expect("delay is supposed to be active");
+
+                            // send two times the note off, the live one will be only used to mark the note on as delayed
+                            self.message_queue.insert_message(
+                                midi_event.data,
+                                play_time_in_samples + new_duration,
+                                MessageReason::Delayed,
+                            );
                         }
                     }
                 }

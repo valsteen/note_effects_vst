@@ -67,14 +67,14 @@ impl PartialEq for PatternDeviceChange {
 
 impl TimedEvent for PatternDeviceChange {
     fn timestamp(&self) -> usize {
-        match self {
-            PatternDeviceChange::AddPattern { time, .. } => *time,
-            PatternDeviceChange::PatternExpressionChange { time, .. } => *time,
-            PatternDeviceChange::RemovePattern { time, .. } => *time,
-            PatternDeviceChange::ReplacePattern { time, .. } => *time,
-            PatternDeviceChange::None { time, .. } => *time,
-            PatternDeviceChange::CC { time, .. } => *time,
-            PatternDeviceChange::Legato { time, .. } => *time
+        *match self {
+            PatternDeviceChange::AddPattern { time, .. } => time,
+            PatternDeviceChange::PatternExpressionChange { time, .. } => time,
+            PatternDeviceChange::RemovePattern { time, .. } => time,
+            PatternDeviceChange::ReplacePattern { time, .. } => time,
+            PatternDeviceChange::None { time, .. } => time,
+            PatternDeviceChange::CC { time, .. } => time,
+            PatternDeviceChange::Legato { time, .. } => time
         }
     }
 
