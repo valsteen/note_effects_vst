@@ -120,7 +120,7 @@ impl Delay {
 
             Some(match self.offset {
                 Duration::Off => duration_in_samples as usize,
-                Duration::Duration(x) => (duration_in_samples + x * sample_rate) as usize,
+                Duration::Duration(x) => (duration_in_samples + x * sample_rate).round() as usize,
             })
         } else {
             None

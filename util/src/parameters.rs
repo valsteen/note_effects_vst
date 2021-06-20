@@ -9,6 +9,11 @@ pub fn get_exponential_scale_value(value: f32, max: f32, factor: f32) -> f32 {
     (factor.powf(value) - 1.) * max / (factor - 1.0)
 }
 
+#[inline]
+pub fn get_reverse_exponential_scale_value(value: f32, max: f32, factor: f32) -> f32 {
+    ((value * (factor - 1.0) / max) + 1.).log(factor)
+}
+
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
 pub trait ParameterConversion<ParameterType>

@@ -4,6 +4,7 @@ mod test {
     use crate::NoteOffDelayPlugin;
     use core::mem;
     use std::convert::TryFrom;
+    use util::parameters::get_reverse_exponential_scale_value;
     use vst::api::{Event, EventType, Events, MidiEvent};
     use vst::plugin::{Plugin, PluginParameters};
 
@@ -31,9 +32,9 @@ mod test {
     #[test]
     fn test_process_scheduled_events() {
         let original = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 20)];
-        let expected = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 725)];
+        let expected = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 120)];
 
-        assert_process_scheduled_events(original, expected, 0.01)
+        assert_process_scheduled_events(original, expected, 100)
     }
 
     #[test]
@@ -41,7 +42,7 @@ mod test {
         let original = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 20)];
         let expected = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 20)];
 
-        assert_process_scheduled_events(original, expected, 0.0)
+        assert_process_scheduled_events(original, expected, 0)
     }
 
     #[test]
@@ -49,7 +50,7 @@ mod test {
         let original = vec![([0x90, 0x60, 0x60], 10), ([0x80, 0x60, 0x60], 20)];
         let expected = vec![([0x90, 0x60, 0x60], 10)];
 
-        assert_process_scheduled_events(original, expected, 0.8)
+        assert_process_scheduled_events(original, expected, 1004)
     }
 
     fn compare(events: Vec<vst::event::MidiEvent>, expected: Vec<([u8; 3], i32)>) {
@@ -67,9 +68,13 @@ mod test {
     fn assert_process_scheduled_events(
         original: Vec<([u8; 3], i32)>,
         expected: Vec<([u8; 3], i32)>,
-        delay_parameter_value: f32,
+        delay_parameter_value_samples: usize,
     ) {
         let mut plugin = NoteOffDelayPlugin::default();
+
+        let delay_parameter_value_seconds = delay_parameter_value_samples as f32 / 44100.;
+        let delay_parameter_value = get_reverse_exponential_scale_value(delay_parameter_value_seconds, 10., 20.);
+
         plugin
             .parameters
             .set_parameter(i32::from(Parameter::DelayOffset), delay_parameter_value);
