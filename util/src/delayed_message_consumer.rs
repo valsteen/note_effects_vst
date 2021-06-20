@@ -8,8 +8,8 @@ use super::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 use super::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
 use super::messages::NoteOff;
 use super::midi_message_type::MidiMessageType;
-use std::fmt::{Display, Formatter};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq)]
 struct PlayingNoteIndex {
@@ -17,33 +17,30 @@ struct PlayingNoteIndex {
     pitch: u8,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Clone)]
 pub enum MaxNotesParameter {
     Infinite,
-    Limited(u8)
+    Limited(u8),
 }
 
 impl Display for MaxNotesParameter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MaxNotesParameter::Infinite => "Infinite".to_string(),
-            MaxNotesParameter::Limited(x) => x.to_string()
-        }.fmt(f)
+            MaxNotesParameter::Limited(x) => x.to_string(),
+        }
+        .fmt(f)
     }
 }
-
 
 impl MaxNotesParameter {
     pub fn should_limit(&self, currently_playing: usize) -> bool {
         match self {
             MaxNotesParameter::Infinite => false,
-            MaxNotesParameter::Limited(limit) => {
-                currently_playing >= *limit as usize
-            }
+            MaxNotesParameter::Limited(limit) => currently_playing >= *limit as usize,
         }
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum MessageReason {
@@ -51,7 +48,7 @@ pub enum MessageReason {
     Delayed, // the same event will exist live and delayed
     MaxNotes,
     Retrigger,
-    PlayUnprocessed
+    PlayUnprocessed,
 }
 
 #[derive(Default)]
@@ -85,45 +82,65 @@ impl PlayingNotes {
     }
 }
 
-pub fn process_scheduled_events(
-    samples: usize,
-    current_time_in_samples: usize,
-    messages: &AbsoluteTimeMidiMessageVector,
+pub struct ScheduledEventsHelper {
+    playing_notes: PlayingNotes,
+    pub queued_messages: AbsoluteTimeMidiMessageVector,
+    notes_on_to_requeue: HashMap<usize, AbsoluteTimeMidiMessage>,
+    pub events: Vec<MidiEvent>,
+    buffer_duration_in_samples: usize,
+    delay_is_active: bool,
     max_notes: MaxNotesParameter,
     apply_max_notes_to_delayed_notes_only: bool,
-    delay_is_active: bool,
-) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
-    let mut playing_notes: PlayingNotes = PlayingNotes::default();
-    let mut queued_messages = AbsoluteTimeMidiMessageVector::default();
-    let mut notes_on_to_requeue: HashMap<usize, AbsoluteTimeMidiMessage> = HashMap::new();
-    let mut events: Vec<MidiEvent> = vec![];
+    current_time_in_samples: usize,
+}
 
-    let mut add_event = |event: AbsoluteTimeMidiMessage, playing_notes: &mut PlayingNotes| {
-        // note: playing_notes cannot be captured by closure because the method also uses it, causing the borrow checker
-        // to complain
+impl ScheduledEventsHelper {
+    pub fn new(
+        buffer_duration_in_samples: usize,
+        delay_is_active: bool,
+        max_notes: MaxNotesParameter,
+        apply_max_notes_to_delayed_notes_only: bool,
+        current_time_in_samples: usize,
+    ) -> Self {
+        Self {
+            playing_notes: Default::default(),
+            queued_messages: Default::default(),
+            notes_on_to_requeue: Default::default(),
+            events: vec![],
+            buffer_duration_in_samples,
+            delay_is_active,
+            max_notes,
+            apply_max_notes_to_delayed_notes_only,
+            current_time_in_samples,
+        }
+    }
 
-        if event.play_time_in_samples < current_time_in_samples + samples {
+    fn add_event(&mut self, event: AbsoluteTimeMidiMessage) {
+        if event.play_time_in_samples < self.current_time_in_samples + self.buffer_duration_in_samples {
             // test if it belongs to that time window, as we don't want to replay notes on we put
             // back in the scheduled queue
-            if event.play_time_in_samples >= current_time_in_samples {
+            if event.play_time_in_samples >= self.current_time_in_samples {
                 if let MidiMessageType::NoteOffMessage(_) = MidiMessageType::from(event) {
-                    let note_off_event = event ;
+                    let note_off_event = event;
 
-                    let note_on = match notes_on_to_requeue.get_mut(&note_off_event.id) {
+                    let note_on = match self.notes_on_to_requeue.get_mut(&note_off_event.id) {
                         None => {
                             // no such note running, skip
-                            return ;
+                            return;
                         }
-                        Some(note_on) => note_on
+                        Some(note_on) => note_on,
                     };
 
-                    if note_off_event.reason == MessageReason::Live && delay_is_active && !max_notes.should_limit(playing_notes.len() - 1) {
+                    if note_off_event.reason == MessageReason::Live
+                        && self.delay_is_active
+                        && !self.max_notes.should_limit(self.playing_notes.len() - 1)
+                    {
                         // mark the note on as delayed from now on, but don't sent the note off
                         note_on.reason = MessageReason::Delayed;
                         return;
                     }
 
-                    if apply_max_notes_to_delayed_notes_only
+                    if self.apply_max_notes_to_delayed_notes_only
                         && note_off_event.reason == MessageReason::MaxNotes
                         && note_on.reason == MessageReason::Live
                     {
@@ -133,76 +150,74 @@ pub fn process_scheduled_events(
                     }
 
                     // stop this note, don't requeue
-                    playing_notes.remove(&PlayingNoteIndex {
+                    self.playing_notes.remove(&PlayingNoteIndex {
                         pitch: note_off_event.get_pitch(),
                         channel: note_off_event.get_channel(),
                     });
-                    notes_on_to_requeue.remove(&note_off_event.id);
+                    self.notes_on_to_requeue.remove(&note_off_event.id);
                 }
-                events.push(event.new_midi_event(current_time_in_samples));
+                self.events.push(event.new_midi_event(self.current_time_in_samples));
             }
 
             if let MidiMessageType::NoteOnMessage(_) = MidiMessageType::from(event) {
-                playing_notes.insert(
+                self.playing_notes.insert(
                     PlayingNoteIndex {
                         pitch: event.get_pitch(),
                         channel: event.get_channel(),
                     },
                     event,
                 );
-                notes_on_to_requeue.insert(event.id, event);
+                self.notes_on_to_requeue.insert(event.id, event);
             }
         } else {
-            queued_messages.push(event);
+            self.queued_messages.push(event);
         }
-    };
+    }
 
-    for mut message in messages.iter().copied() {
-        if message.play_time_in_samples < current_time_in_samples {
-            match MidiMessageType::from(message) {
-                MidiMessageType::NoteOnMessage(_) => {}
-                _ => {
-                    panic!("Only pending note on are expected to be found in the past")
+    pub fn process_scheduled_events(mut self, messages: &AbsoluteTimeMidiMessageVector) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+        for mut message in messages.iter().copied() {
+            if message.play_time_in_samples < self.current_time_in_samples {
+                match MidiMessageType::from(message) {
+                    MidiMessageType::NoteOnMessage(_) => {}
+                    _ => {
+                        panic!("Only pending note on are expected to be found in the past")
+                    }
                 }
-            }
-        };
+            };
 
-        match MidiMessageType::from(message) {
-            MidiMessageType::NoteOnMessage(note_on) => {
-                // if still playing : generate note off at current sample, put note on with
-                // delta + 1 in the queue
-                let index = PlayingNoteIndex {
-                    channel: note_on.channel,
-                    pitch: note_on.pitch,
-                };
+            match MidiMessageType::from(message) {
+                MidiMessageType::NoteOnMessage(note_on) => {
+                    // if still playing : generate note off at current sample, put note on with
+                    // delta + 1 in the queue
+                    let index = PlayingNoteIndex {
+                        channel: note_on.channel,
+                        pitch: note_on.pitch,
+                    };
 
-                if let Some(already_playing_note) = playing_notes.get(&index) {
-                    // we were still playing that note. generate a note off first.
-                    add_event(
-                        AbsoluteTimeMidiMessage {
+                    if let Some(&AbsoluteTimeMidiMessage { id, .. }) = self.playing_notes.get(&index) {
+                        // we were still playing that note. generate a note off first.
+                        self.add_event(AbsoluteTimeMidiMessage {
                             data: NoteOff {
                                 channel: note_on.channel,
                                 pitch: note_on.pitch,
                                 velocity: 0,
                             }
                             .into(),
-                            id: already_playing_note.id,
+                            id,
                             reason: MessageReason::Retrigger,
                             play_time_in_samples: message.play_time_in_samples,
-                        },
-                        &mut playing_notes,
-                    );
+                        });
 
-                    // move the note on to the next sample or the daw might be confused
-                    message.play_time_in_samples += 1;
-                } else if max_notes.should_limit(playing_notes.len()) {
-                    if let Some(oldest_playing_note) =
-                        playing_notes.oldest_playing_note(apply_max_notes_to_delayed_notes_only)
-                    {
-                        let oldest_playing_note = *oldest_playing_note; // drop the borrow
+                        // move the note on to the next sample or the daw might be confused
+                        message.play_time_in_samples += 1;
+                    } else if self.max_notes.should_limit(self.playing_notes.len()) {
+                        if let Some(oldest_playing_note) = self
+                            .playing_notes
+                            .oldest_playing_note(self.apply_max_notes_to_delayed_notes_only)
+                        {
+                            let oldest_playing_note = *oldest_playing_note; // drop the borrow
 
-                        add_event(
-                            AbsoluteTimeMidiMessage {
+                            self.add_event(AbsoluteTimeMidiMessage {
                                 data: NoteOff {
                                     channel: oldest_playing_note.get_channel(),
                                     pitch: oldest_playing_note.get_pitch(),
@@ -212,51 +227,49 @@ pub fn process_scheduled_events(
                                 id: oldest_playing_note.id,
                                 play_time_in_samples: message.play_time_in_samples,
                                 reason: MessageReason::MaxNotes,
-                            },
-                            &mut playing_notes,
-                        );
-                    };
+                            });
+                        };
+                    }
+
+                    self.add_event(message);
                 }
 
-                add_event(message, &mut playing_notes);
-            }
-
-            MidiMessageType::NoteOffMessage(note_off) => {
-                let playing_note = PlayingNoteIndex {
-                    channel: note_off.channel,
-                    pitch: note_off.pitch,
-                };
-                match playing_notes.get(&playing_note) {
-                    Some(currently_playing_note) => {
-                        if currently_playing_note.id == message.id {
-                            add_event(message, &mut playing_notes);
-                            continue;
-                        } else {
-                            // this note was interrupted earlier already, don't send that
-                            // note off or we may interrupt a new note with that delayed note
-                            // off
+                MidiMessageType::NoteOffMessage(note_off) => {
+                    let playing_note = PlayingNoteIndex {
+                        channel: note_off.channel,
+                        pitch: note_off.pitch,
+                    };
+                    match self.playing_notes.get(&playing_note) {
+                        Some(currently_playing_note) => {
+                            if currently_playing_note.id == message.id {
+                                self.add_event(message);
+                                continue;
+                            } else {
+                                // this note was interrupted earlier already, don't send that
+                                // note off or we may interrupt a new note with that delayed note
+                                // off
+                                continue;
+                            }
+                        }
+                        None => {
+                            // was not playing at all, skip
                             continue;
                         }
-                    }
-                    None => {
-                        // was not playing at all, skip
-                        continue;
-                    }
-                };
-            }
-            _ => {
-                add_event(message, &mut playing_notes);
+                    };
+                }
+                _ => {
+                    self.add_event(message);
+                }
             }
         }
-    }
 
-    for (_, event) in notes_on_to_requeue {
-        queued_messages.ordered_insert(event)
-    }
+        for (_, event) in self.notes_on_to_requeue.drain() {
+            self.queued_messages.ordered_insert(event)
+        };
 
-    (queued_messages, events)
+        (self.queued_messages, self.events)
+    }
 }
-
 
 pub fn raw_process_scheduled_events(
     samples: usize,
