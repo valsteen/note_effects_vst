@@ -6,4 +6,22 @@ edition = "2018"
 
 [dependencies]
 vst = { git = "https://github.com/rustaudio/vst-rs" }
-global_counter = "0.2.1"
+global_counter = "0.2.2"
+log = "0.4.14"
+simplelog = "0.10.0"
+build-info = "0.0.23"
+serde = "1.0.126"
+ipc-channel = "0.15.0"
+async-channel = "1.6.1"
+uuid = "0.8.2"
+
+[dependencies.log-panics]
+version = "2.0.0"
+features = ["with-backtrace"]
+
+[build-dependencies]
+build-info-build = "0.0.23"
+
+[features]
+default = ["enable_logging"]
+enable_logging = []

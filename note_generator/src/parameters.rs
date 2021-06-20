@@ -1,10 +1,10 @@
 use std::sync::Mutex;
 use util::constants::{C0, NOTE_NAMES};
 use util::parameter_value_conversion::{f32_to_bool, f32_to_byte, f32_to_u14};
+use util::parameters::ParameterConversion;
 use util::HostCallbackLock;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
-use util::parameters::ParameterConversion;
 
 pub struct NoteGeneratorPluginParameters {
     pub host: Mutex<HostCallbackLock>,
@@ -36,14 +36,14 @@ impl From<i32> for Parameter {
             6 => Parameter::Trigger,
             7 => Parameter::TriggeredPitch,
             8 => Parameter::TriggeredChannel,
-            _ => panic!(format!("No such Parameter {}", i)),
+            _ => panic!("No such Parameter {}", i),
         }
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(parameter: Parameter) -> Self {
+        parameter as i32
     }
 }
 
@@ -90,7 +90,10 @@ impl NoteGeneratorPluginParameters {
     #[inline]
     fn get_pitchbend_label(&self) -> String {
         let semitones = self.get_u14_parameter(Parameter::PitchBend);
-        format!("{:.2} semitones", ((semitones as i32 * 96000 / 16383) - 48000) as f32 / 1000.)
+        format!(
+            "{:.2} semitones",
+            ((semitones as i32 * 96000 / 16384) - 48000) as f32 / 1000.
+        )
     }
 
     #[inline]
@@ -184,39 +187,35 @@ impl PluginParameters for NoteGeneratorPluginParameters {
                 }
                 Err(_) => false,
             },
-            Parameter::Velocity | Parameter::NoteOffVelocity | Parameter::Pressure => {
-                match text.parse::<u8>() {
-                    Ok(n) => {
-                        if n < 128 {
-                            self.set_byte_parameter(Parameter::Velocity, n);
-                            true
+            Parameter::Velocity | Parameter::NoteOffVelocity | Parameter::Pressure => match text.parse::<u8>() {
+                Ok(n) => {
+                    if n < 128 {
+                        self.set_byte_parameter(Parameter::Velocity, n);
+                        true
+                    } else {
+                        false
+                    }
+                }
+                Err(_) => false,
+            },
+            Parameter::Pitch => match NOTE_NAMES.iter().position(|&s| text.starts_with(s)) {
+                None => false,
+                Some(position) => match text[NOTE_NAMES[position].len()..text.len()].parse::<i8>() {
+                    Ok(octave) => {
+                        if octave >= -2 && octave <= 8 {
+                            let pitch = octave as i16 * 12 + C0 as i16 + position as i16;
+                            if pitch < 128 {
+                                self.set_byte_parameter(Parameter::Pitch, pitch as u8);
+                                true
+                            } else {
+                                false
+                            }
                         } else {
                             false
                         }
                     }
                     Err(_) => false,
-                }
-            }
-            Parameter::Pitch => match NOTE_NAMES.iter().position(|&s| text.starts_with(s)) {
-                None => false,
-                Some(position) => {
-                    match text[NOTE_NAMES[position].len()..text.len()].parse::<i8>() {
-                        Ok(octave) => {
-                            if octave >= -2 && octave <= 8 {
-                                let pitch = octave as i16 * 12 + C0 as i16 + position as i16;
-                                if pitch < 128 {
-                                    self.set_byte_parameter(Parameter::Pitch, pitch as u8);
-                                    true
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        }
-                        Err(_) => false,
-                    }
-                }
+                },
             },
             Parameter::Trigger => match text.to_ascii_lowercase().as_ref() {
                 "0" | "off" | "" => {

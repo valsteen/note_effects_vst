@@ -7,5 +7,8 @@ members = [
     "filter_out_non_note",
     "note_fan_out",
     "midi_delay",
-    "max_note_duration"
+    "max_note_duration",
+    "audio_data",
+    "arpegiator",
+    "arpegiator_pattern_receiver"
 ]

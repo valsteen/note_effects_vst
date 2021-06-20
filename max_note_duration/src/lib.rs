@@ -5,17 +5,17 @@ extern crate vst;
 
 use std::sync::Arc;
 
-use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
-use vst::event::{Event, MidiEvent};
 use vst::api::Events;
+use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::event::{Event, MidiEvent};
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
 use parameters::MaxNoteDurationPluginParameters;
 use parameters::Parameter;
-use util::midi_message_type::MidiMessageType;
-use util::parameters::ParameterConversion;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+use util::midi_message_type::MidiMessageType;
+use util::parameters::ParameterConversion;
 
 plugin_main!(MaxNoteDurationPlugin);
 
@@ -32,14 +32,12 @@ impl PartialEq for PlayingNote {
     }
 }
 
-
 impl Hash for PlayingNote {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.channel.hash(state);
         self.pitch.hash(state);
     }
 }
-
 
 pub struct MaxNoteDurationPlugin {
     current_time_in_samples: usize,
@@ -67,7 +65,6 @@ impl Default for MaxNoteDurationPlugin {
     }
 }
 
-
 impl MaxNoteDurationPlugin {
     #[allow(dead_code)]
     fn seconds_per_sample(&self) -> f32 {
@@ -83,7 +80,6 @@ impl MaxNoteDurationPlugin {
         self.current_time_in_samples = new_time_in_samples;
     }
 }
-
 
 impl Plugin for MaxNoteDurationPlugin {
     fn get_info(&self) -> Info {
@@ -134,13 +130,18 @@ impl Plugin for MaxNoteDurationPlugin {
         use vst::plugin::CanDo::*;
 
         match can_do {
-            SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | ReceiveTimeInfo | MidiKeyBasedInstrumentControl | Bypass => Yes,
+            SendEvents
+            | SendMidiEvent
+            | ReceiveEvents
+            | ReceiveMidiEvent
+            | Offline
+            | ReceiveTimeInfo
+            | MidiKeyBasedInstrumentControl
+            | Bypass => Yes,
             MidiProgramNames => No,
             ReceiveSysExEvent => Yes,
             MidiSingleNoteTuningChange => No,
-            Other(_) => {
-                Maybe
-            }
+            Other(_) => Maybe,
         }
     }
 
@@ -173,8 +174,11 @@ impl Plugin for MaxNoteDurationPlugin {
     }
 
     fn process_events(&mut self, events: &Events) {
-        let maximum_duration = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(Parameter::MaxDuration,
-                                                                                                       10., 20.));
+        let maximum_duration = self.seconds_to_samples(self.parameters.get_exponential_scale_parameter(
+            Parameter::MaxDuration,
+            10.,
+            20.,
+        ));
 
         for event in events.events() {
             let midi_event = if let Event::Midi(midi_event) = event {
@@ -188,7 +192,7 @@ impl Plugin for MaxNoteDurationPlugin {
                     self.current_playing_notes.remove(&PlayingNote {
                         channel: note.channel,
                         pitch: note.pitch,
-                        deadline: 0,  // ignored for comparisons
+                        deadline: 0, // ignored for comparisons
                     });
                 }
                 MidiMessageType::NoteOnMessage(note) => {

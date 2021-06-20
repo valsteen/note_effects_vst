@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 use util::parameter_value_conversion::f32_to_byte;
+use util::parameters::ParameterConversion;
 use util::HostCallbackLock;
 use vst::plugin::{HostCallback, PluginParameters};
 use vst::util::ParameterTransfer;
-use util::parameters::ParameterConversion;
 
 pub struct NoteFanoutParameters {
     pub host: Mutex<HostCallbackLock>,
@@ -17,7 +17,6 @@ pub enum Parameter {
     Selection,
     ChannelDistribute,
 }
-
 
 impl Clone for Parameter {
     fn clone(&self) -> Self {
@@ -37,14 +36,14 @@ impl From<i32> for Parameter {
             0 => Parameter::Steps,
             1 => Parameter::Selection,
             2 => Parameter::ChannelDistribute,
-            _ => panic!(format!("No such Parameter {}", i)),
+            _ => panic!("No such Parameter {}", i),
         }
     }
 }
 
-impl Into<i32> for Parameter {
-    fn into(self) -> i32 {
-        self as i32
+impl From<Parameter> for i32 {
+    fn from(p: Parameter) -> Self {
+        p as i32
     }
 }
 
@@ -75,7 +74,7 @@ impl NoteFanoutParameters {
 
 pub enum ChannelDistribution {
     Channels(u8),
-    Off
+    Off,
 }
 
 impl From<f32> for ChannelDistribution {
@@ -85,27 +84,26 @@ impl From<f32> for ChannelDistribution {
         if channels_value < 2 {
             ChannelDistribution::Off
         } else {
-            ChannelDistribution::Channels(channels_value)  // channel 0 ( displayed as 1 ) is reserved for MPE
+            ChannelDistribution::Channels(channels_value) // channel 0 ( displayed as 1 ) is reserved for MPE
         }
     }
 }
 
-
-impl Into<f32> for ChannelDistribution {
-    fn into(self) -> f32 {
-        match self {
+impl From<ChannelDistribution> for f32 {
+    fn from(cd: ChannelDistribution) -> f32 {
+        match cd {
             ChannelDistribution::Channels(value) => {
                 // normalize over 15 values, first range is off
-                ((value as f32 - 2.) / 13.) * 14. / 15. + 1./15.
+                ((value as f32 - 2.) / 13.) * 14. / 15. + 1. / 15.
             }
-            ChannelDistribution::Off => 0.0
+            ChannelDistribution::Off => 0.0,
         }
     }
 }
 
 impl PluginParameters for NoteFanoutParameters {
     fn get_parameter_text(&self, index: i32) -> String {
-        match Parameter::from(index ) {
+        match Parameter::from(index) {
             Parameter::Steps => {
                 let value = self.get_byte_parameter(Parameter::Steps) / 8;
                 if value == 0 {
@@ -117,12 +115,10 @@ impl PluginParameters for NoteFanoutParameters {
             Parameter::Selection => {
                 format!("{}", self.get_byte_parameter(Parameter::Selection) / 8)
             }
-            Parameter::ChannelDistribute => {
-                match self.get_channel_distribution(Parameter::ChannelDistribute) {
-                    ChannelDistribution::Channels(c) => format!("{}", c),
-                    ChannelDistribution::Off => "Off".to_string()
-                }
-            }
+            Parameter::ChannelDistribute => match self.get_channel_distribution(Parameter::ChannelDistribute) {
+                ChannelDistribution::Channels(c) => format!("{}", c),
+                ChannelDistribution::Off => "Off".to_string(),
+            },
         }
     }
 
@@ -130,7 +126,7 @@ impl PluginParameters for NoteFanoutParameters {
         match Parameter::from(index as i32) {
             Parameter::Steps => "Steps",
             Parameter::Selection => "Selection",
-            Parameter::ChannelDistribute => "Channel distribution"
+            Parameter::ChannelDistribute => "Channel distribution",
         }
         .to_string()
     }

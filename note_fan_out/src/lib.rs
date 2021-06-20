@@ -4,7 +4,7 @@ mod parameters;
 extern crate vst;
 
 use std::collections::HashSet;
-use std::hash::{Hasher, Hash};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use vst::api;
 use vst::buffer::{AudioBuffer, SendEventBuffer};
@@ -20,7 +20,6 @@ use util::raw_message::RawMessage;
 
 plugin_main!(NoteFanOut);
 
-
 #[derive(Default)]
 pub struct NoteFanOut {
     events: Vec<MidiEvent>,
@@ -28,25 +27,23 @@ pub struct NoteFanOut {
     send_buffer: SendEventBuffer,
     parameters: Arc<NoteFanoutParameters>,
     current_step: u8,
-    notes_counter: usize
+    notes_counter: usize,
 }
-
 
 impl NoteFanOut {
     fn send_midi(&mut self) {
         if let Ok(mut host_callback_lock) = self.parameters.host.lock() {
-            self.send_buffer
-                .send_events(&self.events, &mut host_callback_lock.host);
+            self.send_buffer.send_events(&self.events, &mut host_callback_lock.host);
         }
         self.events.clear();
     }
 }
 
-#[derive(Eq,Clone)]
+#[derive(Eq, Clone)]
 struct PlayingNote {
     channel: u8,
     pitch: u8,
-    mapped_channel: u8
+    mapped_channel: u8,
 }
 
 impl PartialEq for PlayingNote {
@@ -98,7 +95,7 @@ impl Plugin for NoteFanOut {
             SendEvents | SendMidiEvent | ReceiveEvents | ReceiveMidiEvent | Offline | Bypass => Yes,
             MidiProgramNames | ReceiveSysExEvent | MidiSingleNoteTuningChange => No,
             Other(_) => Maybe,
-            _ => Maybe
+            _ => Maybe,
         }
     }
 
@@ -116,23 +113,23 @@ impl Plugin for NoteFanOut {
 
                 match midi_message {
                     MidiMessageType::NoteOnMessage(midi_message) => {
-                        let target_channel = match self.parameters.get_channel_distribution(Parameter::ChannelDistribute) {
-                            ChannelDistribution::Channels(distribution) => {
-                                let target_channel = (self.notes_counter % (distribution as usize)) as u8 + 1;
-                                self.notes_counter += 1;
-                                target_channel
-                            }
-                            ChannelDistribution::Off => {
-                                GenericChannelMessage::from(&e.data).get_channel()
-                            }
-                        };
+                        let target_channel =
+                            match self.parameters.get_channel_distribution(Parameter::ChannelDistribute) {
+                                ChannelDistribution::Channels(distribution) => {
+                                    let target_channel = (self.notes_counter % (distribution as usize)) as u8 + 1;
+                                    self.notes_counter += 1;
+                                    target_channel
+                                }
+                                ChannelDistribution::Off => GenericChannelMessage::from(&e.data).get_channel(),
+                            };
 
                         if steps == 0 || selection == self.current_step {
-                            let raw_message : RawMessage = NoteOn {
+                            let raw_message: RawMessage = NoteOn {
                                 channel: target_channel,
                                 pitch: midi_message.pitch,
-                                velocity: midi_message.velocity
-                            }.into();
+                                velocity: midi_message.velocity,
+                            }
+                            .into();
 
                             self.events.push(MidiEvent {
                                 data: raw_message.into(),
@@ -141,34 +138,35 @@ impl Plugin for NoteFanOut {
                                 note_length: e.note_length,
                                 note_offset: e.note_offset,
                                 detune: e.detune,
-                                note_off_velocity: e.note_off_velocity
+                                note_off_velocity: e.note_off_velocity,
                             });
 
                             self.current_playing_notes.insert(PlayingNote {
                                 channel: midi_message.get_channel(),
                                 pitch: midi_message.get_pitch(),
-                                mapped_channel: target_channel
+                                mapped_channel: target_channel,
                             });
                         }
 
                         if steps > 0 {
-                            self.current_step = (self.current_step + 1) % steps ;
+                            self.current_step = (self.current_step + 1) % steps;
                         }
                     }
                     MidiMessageType::NoteOffMessage(midi_message) => {
                         let lookup = PlayingNote {
                             channel: midi_message.get_channel(),
                             pitch: midi_message.get_pitch(),
-                            mapped_channel: midi_message.get_channel()
+                            mapped_channel: midi_message.get_channel(),
                         };
 
                         match self.current_playing_notes.take(&lookup) {
                             Some(note) => {
-                                let raw_message : RawMessage = NoteOff {
+                                let raw_message: RawMessage = NoteOff {
                                     channel: note.mapped_channel,
                                     pitch: midi_message.pitch,
-                                    velocity: midi_message.velocity
-                                }.into();
+                                    velocity: midi_message.velocity,
+                                }
+                                .into();
 
                                 self.events.push(MidiEvent {
                                     data: raw_message.into(),
@@ -177,7 +175,7 @@ impl Plugin for NoteFanOut {
                                     note_length: e.note_length,
                                     note_offset: e.note_offset,
                                     detune: e.detune,
-                                    note_off_velocity: e.note_off_velocity
+                                    note_off_velocity: e.note_off_velocity,
                                 });
                             }
                             None => {

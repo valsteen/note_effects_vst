@@ -1,24 +1,28 @@
 mod parameters;
+mod tests;
 
 #[macro_use]
 extern crate vst;
 
+use log::info;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use vst::buffer::{AudioBuffer, SendEventBuffer};
-use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin, PluginParameters};
-use vst::event::Event;
 use vst::api::Events;
+use vst::buffer::{AudioBuffer, SendEventBuffer};
+use vst::event::{Event, MidiEvent};
+use vst::plugin::{CanDo, Category, HostCallback, Info, Plugin};
 
+use crate::parameters::PARAMETER_COUNT;
 use parameters::NoteOffDelayPluginParameters;
 use parameters::Parameter;
 use util::absolute_time_midi_message_vector::AbsoluteTimeMidiMessageVector;
-use util::debug::DebugSocket;
 use util::delayed_message_consumer::{process_scheduled_events, MessageReason};
+use util::logging::logging_setup;
 use util::messages::format_event;
 use util::midi_message_type::MidiMessageType;
 use util::parameters::ParameterConversion;
+use util::absolute_time_midi_message::AbsoluteTimeMidiMessage;
 
 plugin_main!(NoteOffDelayPlugin);
 
@@ -37,25 +41,32 @@ impl Default for NoteOffDelayPlugin {
             parameters: Arc::new(Default::default()),
             sample_rate: 44100.0,
             current_time_in_samples: 0,
-            message_queue: Default::default()
+            message_queue: Default::default(),
         }
     }
 }
 
 impl NoteOffDelayPlugin {
-    fn send_events(&mut self, samples: usize) {
-        if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
-            let (next_message_queue, events) = process_scheduled_events(
-                samples,
-                self.current_time_in_samples,
-                &self.message_queue,
-                self.parameters.get_max_notes(),
-                self.parameters.get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
-                self.parameters.get_parameter(Parameter::Delay.into()) > 0.0
-            );
+    fn process_scheduled_events(&self, samples: usize) -> (AbsoluteTimeMidiMessageVector, Vec<MidiEvent>) {
+        process_scheduled_events(
+            samples,
+            self.parameters.get_delay().is_active(),
+            self.parameters.get_max_notes(),
+            self.parameters
+                .get_bool_parameter(Parameter::MaxNotesAppliesToDelayedNotesOnly),
+            self.current_time_in_samples,
+            &self.message_queue,
+        )
+    }
 
-            self.message_queue = next_message_queue;
-            self.send_buffer.borrow_mut().send_events(events, &mut host_callback_lock.host);
+    fn send_events(&mut self, samples: usize) {
+        let (queued_messages, events) = self.process_scheduled_events(samples);
+        self.message_queue = queued_messages;
+
+        if let Ok(mut host_callback_lock) = self.parameters.host_mutex.lock() {
+            self.send_buffer
+                .borrow_mut()
+                .send_events(events, &mut host_callback_lock.host);
         }
     }
 
@@ -64,22 +75,19 @@ impl NoteOffDelayPlugin {
         1.0 / self.sample_rate
     }
 
+    #[allow(dead_code)]
     fn seconds_to_samples(&self, seconds: f32) -> usize {
         (seconds * self.sample_rate) as usize
     }
 
     fn debug_events_in(&mut self, events: &Events) {
         for e in events.events() {
-            DebugSocket::send(
-                &*(format_event(&e)
-                    + &*format!(" current time={}", self.current_time_in_samples)),
-            );
+            info!("{} current time={}", format_event(&e), self.current_time_in_samples);
         }
     }
 
     fn increase_time_in_samples(&mut self, samples: usize) {
-        let new_time_in_samples = self.current_time_in_samples + samples;
-        self.current_time_in_samples = new_time_in_samples;
+        self.current_time_in_samples += samples;
     }
 }
 
@@ -89,7 +97,7 @@ impl Plugin for NoteOffDelayPlugin {
             name: "Note Off Delay".to_string(),
             vendor: "DJ Crontab".to_string(),
             unique_id: 234213173,
-            parameters: 3,
+            parameters: PARAMETER_COUNT as i32,
             category: Category::Effect,
             initial_delay: 0,
             version: 1,
@@ -105,10 +113,12 @@ impl Plugin for NoteOffDelayPlugin {
     }
 
     fn new(host: HostCallback) -> Self {
-        let parameters = NoteOffDelayPluginParameters::new(host);
-        DebugSocket::send(
-            build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp),
+        logging_setup();
+        info!(
+            "{}",
+            build_info::format!("{{{} v{} built with {} at {}}}", $.crate_info.name, $.crate_info.version, $.compiler, $.timestamp)
         );
+        let parameters = NoteOffDelayPluginParameters::new(host);
         NoteOffDelayPlugin {
             current_time_in_samples: 0,
             message_queue: Default::default(),
@@ -146,7 +156,7 @@ impl Plugin for NoteOffDelayPlugin {
                 // if s == "MPE" {
                 //     Yes
                 // } else {
-                //     DebugSocket::send(&*s);
+                //     info!("{}", s) ;
                 //     No
                 // }
                 Maybe
@@ -162,34 +172,40 @@ impl Plugin for NoteOffDelayPlugin {
     fn process_events(&mut self, events: &Events) {
         self.debug_events_in(events);
 
-        let note_off_delay = self.seconds_to_samples(self.parameters
-            .get_exponential_scale_parameter(Parameter::Delay, 10., 20.));
-
-        for event in events.events() {
-            let midi_event = if let Event::Midi(midi_event) = event {
-                midi_event
+        let midi_events = events.events().filter_map(
+            |event| if let Event::Midi(midi_event) = event {
+                Some(midi_event)
             } else {
-                continue
-            };
+                None
+            }
+        );
 
+        for midi_event in midi_events {
             // TODO: minimum time, maximum time ( with delay )
 
             match MidiMessageType::from(&midi_event.data) {
-                MidiMessageType::NoteOffMessage(_) => {
-                    self.message_queue.insert_message(
-                        midi_event.data,
-                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
-                    );
+                MidiMessageType::NoteOffMessage(note_off) => {
+                    let note_off_play_time = midi_event.delta_frames as usize + self.current_time_in_samples;
 
-                    if note_off_delay > 0 {
-                        // send two times the note off, the live one will be only used to mark the note on as delayed
-                        self.message_queue.insert_message(
-                            midi_event.data,
-                            note_off_delay + midi_event.delta_frames as usize + self.current_time_in_samples,
-                            MessageReason::Delayed,
-                        );
+                    self.message_queue
+                        .insert_message(midi_event.data, note_off_play_time, MessageReason::Live);
+
+                    let delay = self.parameters.get_delay();
+
+                    if delay.is_active() {
+                        let matching_note_on = self.message_queue.get_matching_note_on(note_off.channel, note_off.pitch);
+                        if let Some(&AbsoluteTimeMidiMessage { play_time_in_samples,.. }) = matching_note_on {
+                            let duration = note_off_play_time - play_time_in_samples;
+                            let new_duration = delay.apply(duration, self.sample_rate).expect("delay is supposed to be active");
+
+                            // send two times the note off, the live one will be only used to mark the note on as delayed
+                            self.message_queue.insert_message(
+                                midi_event.data,
+                                play_time_in_samples + new_duration,
+                                MessageReason::Delayed,
+                            );
+                        }
                     }
-
                 }
                 MidiMessageType::Unsupported => {
                     continue;
@@ -197,7 +213,8 @@ impl Plugin for NoteOffDelayPlugin {
                 _ => {
                     self.message_queue.insert_message(
                         midi_event.data,
-                        midi_event.delta_frames as usize + self.current_time_in_samples, MessageReason::Live,
+                        midi_event.delta_frames as usize + self.current_time_in_samples,
+                        MessageReason::Live,
                     );
                 }
             };

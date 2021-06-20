@@ -1,12 +1,25 @@
 use vst::plugin::PluginParameters;
 use vst::util::ParameterTransfer;
 
-use super::parameter_value_conversion::{f32_to_byte, byte_to_f32, f32_to_bool, bool_to_f32, u14_to_f32, f32_to_u14};
+use super::parameter_value_conversion::{bool_to_f32, byte_to_f32, f32_to_bool, f32_to_byte, f32_to_u14, u14_to_f32};
+
+
+#[inline]
+pub fn get_exponential_scale_value(value: f32, max: f32, factor: f32) -> f32 {
+    (factor.powf(value) - 1.) * max / (factor - 1.0)
+}
+
+#[inline]
+pub fn get_reverse_exponential_scale_value(value: f32, max: f32, factor: f32) -> f32 {
+    ((value * (factor - 1.0) / max) + 1.).log(factor)
+}
+
 
 // TODO can Parameter implement just from/into i32, and provide a default implementation for usize ?
 pub trait ParameterConversion<ParameterType>
-    where ParameterType: Into<i32> + From<i32>,
-          Self: PluginParameters
+where
+    ParameterType: Into<i32> + From<i32>,
+    Self: PluginParameters,
 {
     #[inline]
     fn get_byte_parameter(&self, index: ParameterType) -> u8 {
@@ -33,7 +46,7 @@ pub trait ParameterConversion<ParameterType>
     #[inline]
     fn get_exponential_scale_parameter(&self, index: ParameterType, max: f32, factor: f32) -> f32 {
         let x = self.get_parameter_transfer().get_parameter(index.into() as usize);
-        (factor.powf(x) - 1.) * max / (factor - 1.0)
+        get_exponential_scale_value(x, max, factor)
     }
 
     #[inline]
@@ -58,19 +71,22 @@ pub trait ParameterConversion<ParameterType>
     //     self.get_parameter_transfer().get_parameter(index as usize)
     // }
 
-    fn get_parameter_transfer(&self) -> &ParameterTransfer ;
+    fn get_parameter_transfer(&self) -> &ParameterTransfer;
 
-
-    fn get_parameter_count() -> usize ;
+    fn get_parameter_count() -> usize;
 
     fn serialize_state(&self) -> Vec<u8> {
         (0..Self::get_parameter_count())
-            .map(|i | self.get_byte_parameter((i as i32).into()))
+            .map(|i| self.get_byte_parameter((i as i32).into()))
             .collect()
     }
 
     fn deserialize_state(&self, data: &[u8]) {
-        for (i, item) in data.iter().enumerate() {
+        for (i, item) in data
+            .iter()
+            .enumerate()
+            .take_while(|(i, _)| *i < Self::get_parameter_count())
+        {
             self.set_byte_parameter((i as i32).into(), *item);
         }
     }
